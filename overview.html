@@ -371,7 +371,7 @@ async function applySelectedMonth(){
 
 // 관리자 전용 — 알림 벨을 열어봐야만 알 수 있던 "지금 확인이 필요한 업체들"을 한 화면에 상시 노출.
 // 알림 유형별 심각도 순으로 정렬해서, 여러 업체에 문제가 겹쳐 있을 때 뭐부터 봐야 할지 바로 보이게 함.
-const RISK_SEVERITY = { '📉':1, '📈':1, '🎯':2, '💸':3, '🚫':4 }; // 낮을수록 심각(위로 정렬)
+const RISK_SEVERITY = { '📉':1, '📈':1, '🎯':2, '💸':3, '🚫':4, '📊':4 }; // 낮을수록 심각(위로 정렬)
 function renderRiskPanel(alerts){
   const panel = document.getElementById('overviewRiskPanel');
   if(!alerts || !alerts.length){ panel.style.display = 'none'; panel.innerHTML = ''; return; }
@@ -791,6 +791,25 @@ async function computeAlerts(){
       if(zeroConv.length){
         const totalWaste = zeroConv.reduce((s,c)=>s+c.cost,0);
         alerts.push({ id:`${key}:zero-conv:${last.label}`, key, name, icon:'🚫', text:`전환 0건인 캠페인이 ${zeroConv.length}개 있어요 (합계 비용 ${fmtWon(totalWaste)}원)` });
+      }
+    }
+    // 평균노출순위(avgRank, 숫자가 작을수록 상위) 급락 — index.html의 computeAlerts와 동일 로직(알림은
+    // 두 페이지에서 같은 결과를 내야 해서 항상 같이 수정함). 노출수가 일정 이상인 캠페인만 비교(표본 부족 방지).
+    if(prev && last.campaigns && prev.campaigns && last.campaigns.length){
+      const prevRankMap = {};
+      prev.campaigns.forEach(c=>{ if(c.avgRank!==null && c.avgRank!==undefined && (c.impressions||0)>=50) prevRankMap[c.campaign]=c.avgRank; });
+      const rankDrops = [];
+      last.campaigns.forEach(c=>{
+        if(c.avgRank===null || c.avgRank===undefined || (c.impressions||0)<50) return;
+        const pr = prevRankMap[c.campaign];
+        if(pr===undefined) return;
+        const diff = c.avgRank - pr;
+        if(diff>=1){ rankDrops.push({ campaign:c.campaign, prevRank:pr, currRank:c.avgRank, diff }); }
+      });
+      if(rankDrops.length){
+        rankDrops.sort((a,b)=>b.diff-a.diff);
+        const top = rankDrops[0];
+        alerts.push({ id:`${key}:rank-drop:${last.label}`, key, name, icon:'📊', text:`'${top.campaign}' 평균노출순위가 ${top.prevRank.toFixed(1)}위 → ${top.currRank.toFixed(1)}위로 떨어졌어요${rankDrops.length>1?` (외 ${rankDrops.length-1}개 캠페인도 순위 하락)`:''}` });
       }
     }
     if(data.goal && data.goal.budgetTarget && last.daily && last.daily.length>=3){
