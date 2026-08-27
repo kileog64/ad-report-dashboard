@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>자유 조회 - 광고 성과 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script>
+  // 이 페이지는 다른 페이지들과 완전히 독립적으로 동작하는 별도 화면이에요(코드 공유 없음, 파일 하나만으로 완결).
+  // 같은 Firebase 프로젝트를 그대로 바라보기만 해서 로그인·업체 데이터는 공유되지만, 로직/상태는 서로 건드리지 않아요.
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCzJ77rABIdRQk51xMlzC4FmI40hPG7doQ",
+    authDomain: "ad-report-dashboard-dcd95.firebaseapp.com",
+    projectId: "ad-report-dashboard-dcd95",
+    storageBucket: "ad-report-dashboard-dcd95.firebasestorage.app",
+    messagingSenderId: "427939042880",
+    appId: "1:427939042880:web:eea1cef8afb01f2ad3f1a5"
+  };
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const db = firebase.firestore();
+  const auth = firebase.auth();
+</script>
+<style>
+  :root{
+    --bg:#0d0e15; --panel:#171829; --panel-2:#1d1f33; --border:#33354a;
+    --text:#f5f6fa; --muted:#a8abc4; --up:#4ade9a; --down:#ff6b85; --accent:#8b7cff; --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:radial-gradient(circle at 10% 0%,#191a2c 0%,var(--bg) 45%);color:var(--text);font-family:'Pretendard',sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;}
+  .wrap{max-width:1280px;margin:0 auto;padding:28px;}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .field input{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:'Pretendard',sans-serif;}
+  .btn{border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:7px;}
+  .btn-accent{background:linear-gradient(135deg,var(--accent),#a89aff);color:#fff;}
+  .status-msg{font-size:12.5px;margin-top:11px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--muted);display:none;line-height:1.5;}
+  .status-msg.show{display:block;}
+  .status-msg.err{color:var(--down);}
+  .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:300px;color:var(--muted);font-size:14px;text-align:center;gap:10px;line-height:1.6;}
+  .export-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;}
+  .client-switcher{position:relative;display:inline-block;}
+  .client-switcher-btn{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--border);cursor:pointer;font-size:14px;font-weight:600;color:var(--text);min-width:170px;}
+  .client-switcher-btn .dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .client-switcher-btn .chev{margin-left:auto;font-size:11px;color:var(--muted);}
+  .client-switcher-dropdown{position:absolute;top:calc(100% + 6px);right:0;z-index:50;width:280px;max-height:360px;overflow-y:auto;background:var(--panel-2);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.45);display:none;}
+  .client-switcher-dropdown.open{display:block;}
+  .client-switcher-search{width:100%;box-sizing:border-box;padding:10px 12px;border:none;border-bottom:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;outline:none;position:sticky;top:0;background:var(--panel-2);}
+  .client-switcher-biztabs{display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);position:sticky;top:37px;background:var(--panel-2);z-index:1;}
+  .client-switcher-biztab{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:5px 0;font-size:11.5px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .client-switcher-biztab.active{border-color:var(--accent);color:var(--accent);background:rgba(139,124,255,.12);}
+  .client-switcher-item{display:flex;align-items:center;gap:8px;padding:9px 12px;cursor:pointer;font-size:13.5px;color:var(--text);}
+  .client-switcher-item:hover{background:var(--panel);}
+  .client-switcher-item.active{background:rgba(139,124,255,.15);color:var(--accent);font-weight:700;}
+  .client-switcher-item .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+  .client-switcher-empty{padding:14px;color:var(--muted);font-size:12.5px;text-align:center;}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:22px 24px;margin-bottom:18px;}
+  .panel-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:14px;}
+  .control-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .control-row:last-child{margin-bottom:0;}
+  .control-label{font-size:11.5px;color:var(--muted);font-weight:600;flex-shrink:0;}
+  select, .search-input{background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'Pretendard',sans-serif;}
+  .search-input{cursor:text;font-weight:400;min-width:160px;}
+  .type-chip{display:inline-flex;align-items:center;gap:5px;background:var(--panel-2);border:1px solid var(--border);border-radius:20px;padding:5px 12px;font-size:11.5px;color:var(--muted);cursor:pointer;user-select:none;}
+  .type-chip.active{border-color:var(--accent);color:var(--text);background:rgba(139,124,255,.12);}
+  .type-chip input{display:none;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:right;padding:9px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+  th:first-child{text-align:left;}
+  th:hover{color:var(--text);}
+  th .sort-arrow{font-size:9px;margin-left:3px;color:var(--accent);}
+  td{text-align:right;padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.05);white-space:nowrap;}
+  td:first-child{text-align:left;font-weight:600;color:var(--text);}
+  tr.total-row td{border-top:2px solid var(--border);border-bottom:none;font-weight:700;color:var(--text);background:rgba(255,255,255,.02);}
+  .bar-cell{position:relative;}
+  .bar-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(139,124,255,.12);z-index:0;border-radius:4px;}
+  .bar-text{position:relative;z-index:1;}
+  .table-wrap{overflow-x:auto;}
+  .table-note{font-size:10.5px;color:var(--muted);margin-top:10px;line-height:1.6;}
+  @media (max-width:640px){
+    .wrap{padding:16px;}
+    .panel{padding:16px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="authScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:32px;width:340px;">
+    <h2 style="margin:0 0 4px;font-size:18px;">🧮 자유 조회</h2>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">팀 계정으로 로그인하면 전체 업체 데이터를 함께 볼 수 있어요.</div>
+    <div class="field"><label>이메일</label><input id="auth-email" type="email" placeholder="you@company.com"></div>
+    <div class="field"><label>비밀번호</label><input id="auth-pw" type="password" placeholder="6자 이상"></div>
+    <button class="btn btn-accent" id="loginBtn">로그인</button>
+    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">계정이 없으신가요? 관리자에게 계정 생성을 요청해주세요.</div>
+    <div class="status-msg" id="authStatus"></div>
+  </div>
+</div>
+
+<div class="wrap" id="mainApp" style="display:none;">
+  <div style="display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap;row-gap:6px;">
+    <a href="index.html" style="font-size:12px;color:var(--accent);text-decoration:none;">📊 대시보드</a>
+    <a href="overview.html" style="font-size:12px;color:var(--accent);text-decoration:none;">🗂️ 전체 업체 개요</a>
+    <a href="campaigns.html" style="font-size:12px;color:var(--accent);text-decoration:none;">📣 캠페인 비교 전용 보기</a>
+    <a href="keywords.html" style="font-size:12px;color:var(--accent);text-decoration:none;">🔑 키워드 전용 보기</a>
+    <a href="ads.html" style="font-size:12px;color:var(--accent);text-decoration:none;">🖼️ 소재 전용 보기</a>
+    <a href="hourly.html" style="font-size:12px;color:var(--accent);text-decoration:none;">⏰ 시간대 전용 보기</a>
+    <a href="ab-test.html" style="font-size:12px;color:var(--accent);text-decoration:none;">🧪 A/B 테스트</a>
+    <a href="input.html" style="font-size:12px;color:var(--accent);text-decoration:none;" id="inputLink">+ 데이터 입력하기</a>
+    <div class="client-switcher" id="clientSwitcher" style="margin-left:auto;">
+      <button class="client-switcher-btn" id="clientSwitcherBtn" type="button"><span class="dot" id="clientSwitcherDot" style="background:#666;"></span><span id="clientSwitcherLabel">업체 선택</span><span class="chev">▾</span></button>
+      <div class="client-switcher-dropdown" id="clientSwitcherDropdown">
+        <input class="client-switcher-search" id="clientSwitcherSearch" placeholder="업체 검색...">
+        <div class="client-switcher-biztabs" id="clientSwitcherBizTabs">
+          <button class="client-switcher-biztab active" data-biztype="ALL" type="button">전체</button>
+          <button class="client-switcher-biztab" data-biztype="DB" type="button">DB</button>
+          <button class="client-switcher-biztab" data-biztype="B2C" type="button">B2C</button>
+        </div>
+        <div id="clientSwitcherList"></div>
+      </div>
+    </div>
+    <span id="authUserEmail" style="font-size:12px;color:var(--muted);"></span>
+    <button class="export-btn" id="logoutBtn">로그아웃</button>
+  </div>
+
+  <div style="margin-bottom:14px;">
+    <div style="font-size:20px;font-weight:700;">🧮 자유 조회</div>
+    <div style="font-size:12.5px;color:var(--muted);margin-top:4px;">캠페인·캠페인유형·광고그룹·일자·요일·시간대·키워드 중 원하는 기준으로 묶어서, 원하는 기간만큼 자유롭게 데이터를 뜯어볼 수 있어요.</div>
+  </div>
+
+  <div id="pivotRoot">
+    <div class="empty-state"><div style="font-size:28px;">🧮</div><div>오른쪽 위에서 업체를 선택하면<br>이곳에 조회 화면이 나타나요.</div></div>
+  </div>
+</div>
+
+<script>
+/* ---------- 공통 유틸 (다른 페이지와 이름은 겹치지만 이 파일 안에서만 쓰이는 독립 사본) ---------- */
+function slugify(name){ return name.trim().replace(/[\s\/\\'"]+/g,'_'); }
+const CAMPAIGN_TYPE_LABELS = { WEB_SITE:'파워링크', SHOPPING:'쇼핑검색', POWER_CONTENTS:'파워컨텐츠', BRAND_SEARCH:'브랜드검색광고', PLACE:'플레이스', PLACE_TP:'플레이스', CATEGORY_EDIT:'세부업종', CAMPAIGN_TYPE_UNKNOWN:'기타' };
+function campaignTypeLabel(t){ return CAMPAIGN_TYPE_LABELS[t] || t || '기타'; }
+function fmtMan(man){ return man>=10000 ? (man/10000).toFixed(man%10000===0?0:1)+'억' : Math.round(man).toLocaleString('ko-KR')+'만'; }
+function fmtNum(n){ return Math.round(n).toLocaleString('ko-KR'); }
+
+/* ---------- 저장소 (Firestore) — 다른 페이지들과 동일한 스키마를 읽기만 함 ---------- */
+const DETAIL_DATA_FIELDS = ['keywordsByCampaign','wasteKeywordsByCampaign','expandKeywordsByCampaign','brandKeywordsByCampaign','wasteBrandKeywordsByCampaign','expandBrandKeywordsByCampaign','searchTermsByCampaign','wasteSearchTermsByCampaign','expandSearchTermsByCampaign','hourly','hourlyByCampaign','hourlyByDow','hourlyByDowByCampaign','hourlyByAdgroup','hourlyByCampaignDate','adgroupsByCampaign','dailyByCampaign','dailyByKeyword'];
+function fieldEmptyDefault(f){ return (f==='hourly'||f==='hourlyByCampaign'||f==='hourlyByDow'||f==='hourlyByDowByCampaign'||f==='hourlyByAdgroup'||f==='hourlyByCampaignDate'||f==='dailyByCampaign'||f==='dailyByKeyword') ? [] : {}; }
+function userClientsRef(){
+  if(!auth.currentUser) throw new Error('not signed in');
+  return db.collection('clients');
+}
+let isAdminUser = false;
+let currentUserEmail = '';
+function rolesConfigRef(){ return db.collection('config').doc('roles'); }
+async function checkIsAdmin(email){
+  try{
+    const doc = await rolesConfigRef().get();
+    if(!doc.exists) return false;
+    const admins = doc.data().adminEmails || [];
+    return admins.includes(email);
+  }catch(e){ console.error(e); return false; }
+}
+async function listClients(){
+  try{
+    const snap = await userClientsRef().get();
+    return snap.docs.map(d=>'client:'+d.id);
+  }catch(e){ console.error(e); return []; }
+}
+async function getClientLight(key){
+  try{
+    const id = key.replace(/^client:/,'');
+    const docRef = userClientsRef().doc(id);
+    const doc = await docRef.get();
+    if(!doc.exists) return null;
+    return doc.data();
+  }catch(e){ console.error(e); return null; }
+}
+async function getClient(key){
+  try{
+    const id = key.replace(/^client:/,'');
+    const docRef = userClientsRef().doc(id);
+    const doc = await docRef.get();
+    if(!doc.exists) return null;
+    const data = doc.data();
+    const months = data.months || [];
+    if(months.length){
+      const detailSnap = await docRef.collection('detailData').get().catch(()=>({docs:[]}));
+      const detailMap = {}; detailSnap.docs.forEach(d=>{ detailMap[d.id] = d.data(); });
+      data.months = months.map(m=>{
+        const det = detailMap[m.label];
+        const merged = { ...m };
+        DETAIL_DATA_FIELDS.forEach(f=>{
+          if(det) merged[f] = det[f]!==undefined ? det[f] : fieldEmptyDefault(f);
+          else if(m[f]===undefined) merged[f] = fieldEmptyDefault(f);
+        });
+        return merged;
+      });
+    }
+    return data;
+  }catch(e){ console.error(e); return null; }
+}
+
+/* ---------- 인증 ---------- */
+function authStatus(msg, type){
+  const el = document.getElementById('authStatus');
+  el.textContent = msg; el.className = 'status-msg show ' + (type||'');
+}
+document.getElementById('loginBtn').onclick = async ()=>{
+  const email = document.getElementById('auth-email').value.trim();
+  const pw = document.getElementById('auth-pw').value;
+  if(!email || !pw){ authStatus('이메일과 비밀번호를 입력해주세요.', 'err'); return; }
+  try{ await auth.signInWithEmailAndPassword(email, pw); }catch(e){ authStatus('로그인 실패: ' + e.message, 'err'); }
+};
+document.getElementById('logoutBtn').onclick = ()=> auth.signOut();
+
+/* ---------- 업체 선택 상태 (localStorage로 다른 페이지와 "마지막으로 보던 업체"만 공유) ---------- */
+const ACTIVE_CLIENT_STORAGE = 'ad_dashboard_active_client';
+function getStoredActiveClient(){ return localStorage.getItem(ACTIVE_CLIENT_STORAGE) || null; }
+function setStoredActiveClient(key){ if(key) localStorage.setItem(ACTIVE_CLIENT_STORAGE, key); else localStorage.removeItem(ACTIVE_CLIENT_STORAGE); }
+let activeSlug = null;
+let clientListCache = [];
+async function refreshClientList(selectAfter){
+  const keys = await listClients();
+  const dataList = await Promise.all(keys.map(k=>getClientLight(k)));
+  clientListCache = [];
+  keys.forEach((key,i)=>{
+    const data = dataList[i];
+    if(!data) return;
+    if(!isAdminUser && !(data.allowedUsers||[]).includes(currentUserEmail)) return;
+    clientListCache.push({ key, name: data.name, color: data.color, bizType: data.bizType });
+  });
+  if(!selectAfter && !activeSlug){
+    const stored = getStoredActiveClient();
+    if(stored && clientListCache.some(c=>c.key===stored)) selectAfter = stored;
+  }
+  renderClientSwitcher();
+  if(selectAfter){
+    activeSlug = selectAfter;
+    setStoredActiveClient(selectAfter);
+    const data = await getClient(selectAfter);
+    if(data){ renderPivotPage(data); renderClientSwitcher(); }
+  }
+}
+let clientSwitcherBizFilter = 'ALL';
+function renderClientSwitcher(searchTerm){
+  const active = clientListCache.find(c=>c.key===activeSlug);
+  document.getElementById('clientSwitcherLabel').textContent = active ? active.name : '업체 선택';
+  document.getElementById('clientSwitcherDot').style.background = active ? active.color : '#666';
+  const listEl = document.getElementById('clientSwitcherList');
+  const term = (searchTerm||'').trim().toLowerCase();
+  let filtered = term ? clientListCache.filter(c=>c.name.toLowerCase().includes(term)) : clientListCache.slice();
+  if(clientSwitcherBizFilter!=='ALL') filtered = filtered.filter(c=> (clientSwitcherBizFilter==='DB' ? c.bizType==='DB' : c.bizType!=='DB'));
+  listEl.innerHTML = filtered.length ? filtered.map(c=>`
+    <div class="client-switcher-item${c.key===activeSlug?' active':''}" data-key="${c.key}">
+      <span class="dot" style="background:${c.color}"></span>${c.name}
+    </div>`).join('') : `<div class="client-switcher-empty">검색 결과가 없어요</div>`;
+  listEl.querySelectorAll('.client-switcher-item').forEach(el=>{
+    el.onclick = async ()=>{
+      const key = el.dataset.key;
+      activeSlug = key;
+      setStoredActiveClient(key);
+      document.getElementById('clientSwitcherDropdown').classList.remove('open');
+      const data = await getClient(key);
+      if(data){ renderPivotPage(data); }
+      renderClientSwitcher();
+    };
+  });
+}
+document.querySelectorAll('.client-switcher-biztab').forEach(btn=>{
+  btn.onclick = (e)=>{
+    e.stopPropagation();
+    clientSwitcherBizFilter = btn.dataset.biztype;
+    document.querySelectorAll('.client-switcher-biztab').forEach(b=> b.classList.toggle('active', b===btn));
+    renderClientSwitcher(document.getElementById('clientSwitcherSearch').value);
+  };
+});
+document.getElementById('clientSwitcherBtn').onclick = (e)=>{
+  e.stopPropagation();
+  const dd = document.getElementById('clientSwitcherDropdown');
+  const opening = !dd.classList.contains('open');
+  dd.classList.toggle('open');
+  if(opening){
+    document.getElementById('clientSwitcherSearch').value = '';
+    renderClientSwitcher();
+    document.getElementById('clientSwitcherSearch').focus();
+  }
+};
+document.getElementById('clientSwitcherSearch').oninput = (e)=>{ renderClientSwitcher(e.target.value); };
+document.getElementById('clientSwitcherSearch').onclick = (e)=> e.stopPropagation();
+document.addEventListener('click', ()=>{ document.getElementById('clientSwitcherDropdown').classList.remove('open'); });
+
+/* ---------- 기간(시작~종료 월) 범위 선택 — index.html의 range picker와 같은 방식을 이 페이지 전용으로 다시 구현 ---------- */
+const monthRangeState = {};
+function ensureMonthRange(key, allMonths){
+  if(!allMonths.length) return;
+  const cur = monthRangeState[key];
+  const has = l => allMonths.some(m=>m.label===l);
+  if(!cur || !has(cur.start) || !has(cur.end)){
+    monthRangeState[key] = { start: allMonths[0].label, end: allMonths[allMonths.length-1].label };
+  }
+}
+function monthsInRange(allMonths, range){
+  const si = allMonths.findIndex(m=>m.label===range.start);
+  const ei = allMonths.findIndex(m=>m.label===range.end);
+  if(si<0 || ei<0) return allMonths;
+  const lo = Math.min(si,ei), hi = Math.max(si,ei);
+  return allMonths.slice(lo, hi+1);
+}
+
+/* ---------- 묶음 기준별 집계 ---------- */
+const DOW_LABELS = ['일','월','화','수','목','금','토'];
+const DIM_LABELS = { campaign:'캠페인', type:'캠페인 유형', adgroup:'광고그룹', date:'일자', dow:'요일', hour:'시간대', keyword:'키워드' };
+
+function finalizeGroups(map){
+  return Object.values(map).map(g=>({
+    ...g,
+    ctr: g.impressions>0 ? (g.clicks/g.impressions*100) : 0,
+    cvr: g.clicks>0 ? (g.conv/g.clicks*100) : 0,
+    cpa: g.conv>0 ? Math.round(g.cost*10000/g.conv) : null,
+    roas: g.cost>0 ? (g.revenue/g.cost*100) : 0,
+    avgRank: (g.rankImp && g.rankImp>0) ? (g.rankSum/g.rankImp) : null
+  }));
+}
+function blankGroup(key, extra){ return { key, impressions:0, clicks:0, cost:0, revenue:0, conv:0, rankSum:0, rankImp:0, ...(extra||{}) }; }
+function addToGroup(g, r){
+  g.impressions += r.impressions||0; g.clicks += r.clicks||0; g.cost += r.cost||0; g.revenue += r.revenue||0; g.conv += r.conv||0;
+  if(r.avgRank!==null && r.avgRank!==undefined && (r.impressions||0)>0){ g.rankSum += r.avgRank*r.impressions; g.rankImp += r.impressions; }
+}
+// filterFn(campaignName, type) -> true면 포함. 캠페인 유형 체크박스 + 캠페인명 검색어를 한 번에 적용.
+function groupByCampaign(months, filterFn){
+  const map = {};
+  months.forEach(m=> (m.campaigns||[]).forEach(c=>{
+    if(filterFn && !filterFn(c.campaign, c.type)) return;
+    if(!map[c.campaign]) map[c.campaign] = blankGroup(c.campaign, { type:c.type });
+    addToGroup(map[c.campaign], c);
+  }));
+  return { rows: finalizeGroups(map), hasData: true };
+}
+function groupByType(months, filterFn){
+  const map = {};
+  months.forEach(m=> (m.campaigns||[]).forEach(c=>{
+    if(filterFn && !filterFn(c.campaign, c.type)) return;
+    const k = campaignTypeLabel(c.type);
+    if(!map[k]) map[k] = blankGroup(k);
+    addToGroup(map[k], c);
+  }));
+  return { rows: finalizeGroups(map), hasData: true };
+}
+function groupByAdgroup(months, filterFn){
+  // adgroupsByCampaign: { 캠페인명: [ {adgroup, cost, revenue, conv, impressions, clicks, avgRank, ads:[...]} ] } — ads.html과 동일한 데이터를 재사용.
+  // 광고그룹명은 서로 다른 캠페인에서 같은 이름을 쓸 수 있어서, 집계 키는 "캠페인::광고그룹"으로 분리하고
+  // 화면에는 광고그룹명만 보여주면서 그 아래에 소속 캠페인명을 작게 붙여줌(캠페인 유형 서브라벨과 같은 방식).
+  const map = {};
+  let anyData = false;
+  months.forEach(m=>{
+    const byCamp = m.adgroupsByCampaign || {};
+    Object.keys(byCamp).forEach(camp=>{
+      if(filterFn && !filterFn(camp, null)) return;
+      (byCamp[camp]||[]).forEach(ag=>{
+        if(!ag.adgroup) return;
+        anyData = true;
+        const mapKey = camp + '::' + ag.adgroup;
+        if(!map[mapKey]) map[mapKey] = blankGroup(ag.adgroup, { campaign: camp });
+        addToGroup(map[mapKey], ag);
+      });
+    });
+  });
+  return { rows: finalizeGroups(map), hasData: anyData };
+}
+function groupByDate(months, filterFn){
+  const map = {};
+  let anyData = false;
+  months.forEach(m=>{
+    if(m.dailyByCampaign && m.dailyByCampaign.length){
+      m.dailyByCampaign.forEach(r=>{
+        if(filterFn && !filterFn(r.campaign, null)) return;
+        anyData = true;
+        if(!map[r.date]) map[r.date] = blankGroup(r.date);
+        addToGroup(map[r.date], r);
+      });
+    } else if(m.daily && m.daily.length && !filterFn){
+      // dailyByCampaign이 없는 옛날 달은 캠페인 구분 없이 월 전체 daily로만 대체 가능 — 필터(캠페인 지정)가 걸려있으면 신뢰할 수 없어 건너뜀.
+      m.daily.forEach(r=>{
+        anyData = true;
+        if(!map[r.date]) map[r.date] = blankGroup(r.date);
+        addToGroup(map[r.date], r);
+      });
+    }
+  });
+  return { rows: finalizeGroups(map), hasData: anyData };
+}
+function groupByDow(months, filterFn){
+  const map = {};
+  let anyData = false;
+  months.forEach(m=> (m.hourlyByDowByCampaign||[]).forEach(r=>{
+    if(filterFn && !filterFn(r.campaign, null)) return;
+    anyData = true;
+    const k = DOW_LABELS[r.dow];
+    if(k===undefined) return;
+    if(!map[k]) map[k] = blankGroup(k, { _order:r.dow });
+    addToGroup(map[k], r);
+  }));
+  const rows = finalizeGroups(map).sort((a,b)=>a._order-b._order);
+  return { rows, hasData: anyData };
+}
+function groupByHour(months, filterFn){
+  const map = {};
+  let anyData = false;
+  months.forEach(m=> (m.hourlyByCampaign||[]).forEach(r=>{
+    if(filterFn && !filterFn(r.campaign, r.type)) return;
+    anyData = true;
+    const k = `${r.hour}시`;
+    if(!map[k]) map[k] = blankGroup(k, { _order: parseInt(r.hour,10) });
+    addToGroup(map[k], r);
+  }));
+  const rows = finalizeGroups(map).sort((a,b)=>a._order-b._order);
+  return { rows, hasData: anyData };
+}
+function groupByKeyword(months, filterFn){
+  const map = {};
+  let anyData = false;
+  months.forEach(m=>{
+    ['keywordsByCampaign','brandKeywordsByCampaign'].forEach(field=>{
+      const byCamp = m[field] || {};
+      Object.keys(byCamp).forEach(camp=>{
+        if(filterFn && !filterFn(camp, null)) return;
+        (byCamp[camp]||[]).forEach(item=>{
+          if(!item.keyword) return;
+          anyData = true;
+          if(!map[item.keyword]) map[item.keyword] = blankGroup(item.keyword);
+          addToGroup(map[item.keyword], item);
+        });
+      });
+    });
+  });
+  return { rows: finalizeGroups(map), hasData: anyData };
+}
+function computeGroups(dim, months, filterFn){
+  if(dim==='campaign') return groupByCampaign(months, filterFn);
+  if(dim==='type') return groupByType(months, filterFn);
+  if(dim==='adgroup') return groupByAdgroup(months, filterFn);
+  if(dim==='date') return groupByDate(months, filterFn);
+  if(dim==='dow') return groupByDow(months, filterFn);
+  if(dim==='hour') return groupByHour(months, filterFn);
+  if(dim==='keyword') return groupByKeyword(months, filterFn);
+  return { rows: [], hasData: false };
+}
+
+/* ---------- 페이지 상태 & 렌더 ---------- */
+const pivotState = {}; // key -> { dim, sortField, sortDir, typeFilter:Set|null, search }
+function ensurePivotState(key, allTypes){
+  if(!(key in pivotState)){
+    pivotState[key] = { dim:'campaign', sortField:'cost', sortDir:'desc', typeFilter: new Set(allTypes), search:'' };
+  } else {
+    // 새로 발견된 유형은 기본으로 켜진 채 추가(기존 선택은 유지)
+    allTypes.forEach(t=>{ if(!pivotState[key]._seenTypes || !pivotState[key]._seenTypes.has(t)) pivotState[key].typeFilter.add(t); });
+  }
+  pivotState[key]._seenTypes = new Set(allTypes);
+}
+
+function renderPivotPage(data){
+  window.__currentClientData = data;
+  const key = 'client:' + slugify(data.name);
+  const isDB = data.bizType === 'DB';
+  const allMonths = data.months || [];
+  const root = document.getElementById('pivotRoot');
+  if(!allMonths.length){
+    root.innerHTML = `<div class="empty-state"><div style="font-size:28px;">📭</div><div>이 업체는 아직 등록된 데이터가 없어요.</div></div>`;
+    return;
+  }
+  ensureMonthRange(key, allMonths);
+  const range = monthRangeState[key];
+  const months = monthsInRange(allMonths, range);
+  const allTypes = [...new Set(allMonths.flatMap(m=>(m.campaigns||[]).map(c=>c.type)))];
+  ensurePivotState(key, allTypes);
+  const st = pivotState[key];
+
+  // 일자/요일/키워드 기준 데이터에는 캠페인 유형이 함께 없어서(dailyByCampaign 등은 campaign명만 있음),
+  // campaigns[]에서 뽑은 "캠페인명 → 유형" 매핑으로 보충해서 캠페인 유형 필터가 모든 묶음 기준에서 똑같이 먹히게 함.
+  const campaignTypeMap = {};
+  months.forEach(m=> (m.campaigns||[]).forEach(c=>{ campaignTypeMap[c.campaign] = c.type; }));
+  const filterFn = (campaign, type) => {
+    const effectiveType = (type!==null && type!==undefined) ? type : campaignTypeMap[campaign];
+    if(effectiveType!==undefined && st.typeFilter.size && !st.typeFilter.has(effectiveType)) return false;
+    if(st.search && !campaign.toLowerCase().includes(st.search.toLowerCase())) return false;
+    return true;
+  };
+  const { rows, hasData } = computeGroups(st.dim, months, filterFn);
+  rows.forEach(r=>{ if(r.cpa===null) r.cpa = Infinity; }); // 정렬 시 전환 0건이 항상 맨 뒤로 가도록(낮을수록 좋은 지표라 null을 최악값 취급)
+  const sortField = st.sortField;
+  rows.sort((a,b)=>{
+    let av = a[sortField], bv = b[sortField];
+    if(av===null || av===undefined) av = -Infinity;
+    if(bv===null || bv===undefined) bv = -Infinity;
+    if(typeof av==='string') return st.sortDir==='asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return st.sortDir==='asc' ? av-bv : bv-av;
+  });
+  rows.forEach(r=>{ if(r.cpa===Infinity) r.cpa = null; });
+
+  const totals = rows.reduce((a,r)=>({ impressions:a.impressions+r.impressions, clicks:a.clicks+r.clicks, cost:a.cost+r.cost, revenue:a.revenue+r.revenue, conv:a.conv+r.conv }), { impressions:0, clicks:0, cost:0, revenue:0, conv:0 });
+  const totalCtr = totals.impressions>0 ? (totals.clicks/totals.impressions*100) : 0;
+  const totalCpa = totals.conv>0 ? Math.round(totals.cost*10000/totals.conv) : null;
+  const totalRoas = totals.cost>0 ? (totals.revenue/totals.cost*100) : 0;
+  const maxCost = rows.length ? Math.max(...rows.map(r=>r.cost)) : 0;
+  const hasRankCol = rows.some(r=>r.avgRank!==null);
+
+  const dimLabel = DIM_LABELS[st.dim];
+  const sortArrow = f => st.sortField===f ? `<span class="sort-arrow">${st.sortDir==='asc'?'▲':'▼'}</span>` : '';
+
+  root.innerHTML = `
+    <div class="panel">
+      <div class="panel-title">조회 조건</div>
+      <div class="control-row">
+        <span class="control-label">기간</span>
+        <select id="rangeStartSelect">${allMonths.map(m=>`<option value="${m.label}" ${range.start===m.label?'selected':''}>${m.label}</option>`).join('')}</select>
+        <span style="color:var(--muted);font-size:12px;">~</span>
+        <select id="rangeEndSelect">${allMonths.map(m=>`<option value="${m.label}" ${range.end===m.label?'selected':''}>${m.label}</option>`).join('')}</select>
+        <button class="export-btn" id="rangeAllBtn" style="padding:6px 12px;font-size:11.5px;">전체</button>
+        <span style="font-size:11px;color:var(--muted);margin-left:4px;">(${months.length}개월 합산 · ${months[0]?.label||'-'} ~ ${months[months.length-1]?.label||'-'})</span>
+      </div>
+      <div class="control-row">
+        <span class="control-label">묶음 기준</span>
+        <select id="dimSelect">
+          ${Object.keys(DIM_LABELS).map(d=>`<option value="${d}" ${st.dim===d?'selected':''}>${DIM_LABELS[d]}</option>`).join('')}
+        </select>
+        <span class="control-label" style="margin-left:8px;">캠페인명 검색</span>
+        <input class="search-input" id="searchInput" placeholder="포함된 글자로 검색..." value="${st.search.replace(/"/g,'&quot;')}">
+      </div>
+      <div class="control-row" id="typeFilterRow">
+        <span class="control-label">캠페인 유형</span>
+        ${allTypes.map(t=>`<label class="type-chip ${st.typeFilter.has(t)?'active':''}"><input type="checkbox" data-type="${t}" ${st.typeFilter.has(t)?'checked':''}>${campaignTypeLabel(t)}</label>`).join('')}
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <div class="panel-title" style="margin-bottom:0;">${dimLabel}별 집계 (${rows.length}개)</div>
+        <button class="export-btn" id="exportExcelBtn">📊 엑셀로 내보내기</button>
+      </div>
+      ${!hasData ? `<div class="table-note" style="color:var(--down);margin-bottom:10px;">⚠️ 선택한 기간에는 '${dimLabel}' 기준 세부 데이터가 없어요(예전에 저장된 달이라 이 정보가 없거나, 이 업체엔 해당 데이터 항목이 없을 수 있어요).</div>` : ''}
+      ${!rows.length ? `<div class="empty-state" style="height:160px;">조건에 맞는 데이터가 없어요.</div>` : `
+      <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th data-sort="key">${dimLabel}${sortArrow('key')}</th>
+          <th data-sort="cost">비용${sortArrow('cost')}</th>
+          <th data-sort="impressions">노출수${sortArrow('impressions')}</th>
+          <th data-sort="clicks">클릭수${sortArrow('clicks')}</th>
+          <th data-sort="ctr">CTR${sortArrow('ctr')}</th>
+          <th data-sort="conv">전환수${sortArrow('conv')}</th>
+          ${isDB ? `<th data-sort="cpa">CPA${sortArrow('cpa')}</th>` : `<th data-sort="revenue">매출${sortArrow('revenue')}</th><th data-sort="roas">ROAS${sortArrow('roas')}</th>`}
+          ${hasRankCol ? `<th data-sort="avgRank">평균노출순위${sortArrow('avgRank')}</th>` : ''}
+        </tr></thead>
+        <tbody>
+          ${rows.map(r=>{
+            const barPct = maxCost>0 ? Math.round(r.cost/maxCost*100) : 0;
+            return `<tr>
+              <td>${r.key}${r.type ? `<div style="font-size:10px;color:var(--muted);font-weight:400;">${campaignTypeLabel(r.type)}</div>` : (r.campaign ? `<div style="font-size:10px;color:var(--muted);font-weight:400;">${r.campaign}</div>` : '')}</td>
+              <td class="bar-cell"><div class="bar-fill" style="width:${barPct}%;"></div><span class="bar-text">${fmtMan(r.cost)}원</span></td>
+              <td>${fmtNum(r.impressions)}</td>
+              <td>${fmtNum(r.clicks)}</td>
+              <td>${r.ctr.toFixed(2)}%</td>
+              <td>${fmtNum(r.conv)}건</td>
+              ${isDB ? `<td>${r.cpa!==null?fmtNum(r.cpa)+'원':'-'}</td>` : `<td>${fmtMan(r.revenue)}원</td><td>${r.roas.toFixed(0)}%</td>`}
+              ${hasRankCol ? `<td>${r.avgRank!==null?r.avgRank.toFixed(1)+'위':'-'}</td>` : ''}
+            </tr>`;
+          }).join('')}
+        </tbody>
+        <tfoot>
+          <tr class="total-row">
+            <td>합계</td>
+            <td>${fmtMan(totals.cost)}원</td>
+            <td>${fmtNum(totals.impressions)}</td>
+            <td>${fmtNum(totals.clicks)}</td>
+            <td>${totalCtr.toFixed(2)}%</td>
+            <td>${fmtNum(totals.conv)}건</td>
+            ${isDB ? `<td>${totalCpa!==null?fmtNum(totalCpa)+'원':'-'}</td>` : `<td>${fmtMan(totals.revenue)}원</td><td>${totalRoas.toFixed(0)}%</td>`}
+            ${hasRankCol ? `<td>-</td>` : ''}
+          </tr>
+        </tfoot>
+      </table>
+      </div>
+      <div class="table-note">표 머리글을 클릭하면 그 지표 기준으로 정렬돼요. '요일'·'시간대'·'광고그룹' 기준은 예전에 저장된 달에는 캠페인(또는 광고그룹)별 세부 정보가 없어서 그 달은 집계에서 빠질 수 있어요(다시 업로드하면 포함돼요).</div>
+      `}
+    </div>
+  `;
+
+  document.getElementById('rangeStartSelect').onchange = (e)=>{
+    range.start = e.target.value;
+    if(allMonths.findIndex(m=>m.label===range.start) > allMonths.findIndex(m=>m.label===range.end)) range.end = range.start;
+    renderPivotPage(data);
+  };
+  document.getElementById('rangeEndSelect').onchange = (e)=>{
+    range.end = e.target.value;
+    if(allMonths.findIndex(m=>m.label===range.end) < allMonths.findIndex(m=>m.label===range.start)) range.start = range.end;
+    renderPivotPage(data);
+  };
+  document.getElementById('rangeAllBtn').onclick = ()=>{
+    monthRangeState[key] = { start: allMonths[0].label, end: allMonths[allMonths.length-1].label };
+    renderPivotPage(data);
+  };
+  document.getElementById('dimSelect').onchange = (e)=>{ st.dim = e.target.value; renderPivotPage(data); };
+  document.getElementById('searchInput').oninput = (e)=>{ st.search = e.target.value; renderPivotPage(data); };
+  document.querySelectorAll('#typeFilterRow input[type=checkbox]').forEach(cb=>{
+    cb.onchange = ()=>{
+      const t = cb.dataset.type;
+      if(cb.checked) st.typeFilter.add(t); else st.typeFilter.delete(t);
+      renderPivotPage(data);
+    };
+  });
+  document.querySelectorAll('th[data-sort]').forEach(th=>{
+    th.onclick = ()=>{
+      const f = th.dataset.sort;
+      if(st.sortField===f) st.sortDir = st.sortDir==='asc' ? 'desc' : 'asc';
+      else { st.sortField = f; st.sortDir = (f==='key') ? 'asc' : 'desc'; }
+      renderPivotPage(data);
+    };
+  });
+  const exportBtn = document.getElementById('exportExcelBtn');
+  if(exportBtn) exportBtn.onclick = ()=> exportPivotExcel(data, dimLabel, rows, totals, { totalCtr, totalCpa, totalRoas }, isDB, hasRankCol);
+}
+
+function exportPivotExcel(data, dimLabel, rows, totals, totalDerived, isDB, hasRankCol){
+  const header = [dimLabel, '비용(원)', '노출수', '클릭수', 'CTR(%)', '전환수'];
+  if(isDB) header.push('CPA(원)'); else header.push('매출(원)', 'ROAS(%)');
+  if(hasRankCol) header.push('평균노출순위');
+  const out = [header];
+  rows.forEach(r=>{
+    const row = [r.key, Math.round(r.cost*10000), r.impressions, r.clicks, Number(r.ctr.toFixed(2)), r.conv];
+    if(isDB) row.push(r.cpa); else row.push(Math.round(r.revenue*10000), Number(r.roas.toFixed(0)));
+    if(hasRankCol) row.push(r.avgRank!==null ? Number(r.avgRank.toFixed(1)) : null);
+    out.push(row);
+  });
+  const totalRow = ['합계', Math.round(totals.cost*10000), totals.impressions, totals.clicks, Number(totalDerived.totalCtr.toFixed(2)), totals.conv];
+  if(isDB) totalRow.push(totalDerived.totalCpa); else totalRow.push(Math.round(totals.revenue*10000), Number(totalDerived.totalRoas.toFixed(0)));
+  if(hasRankCol) totalRow.push(null);
+  out.push(totalRow);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(out);
+  XLSX.utils.book_append_sheet(wb, ws, dimLabel+'별 집계');
+  const ymd = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  XLSX.writeFile(wb, `${data.name}_자유조회_${dimLabel}_${ymd}.xlsx`);
+}
+
+/* ---------- 인증 상태 변화 ---------- */
+auth.onAuthStateChanged(async (user)=>{
+  if(user){
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('mainApp').style.display = 'block';
+    document.getElementById('authUserEmail').textContent = user.email;
+    currentUserEmail = user.email;
+    isAdminUser = await checkIsAdmin(user.email);
+    const inputLink = document.getElementById('inputLink');
+    if(inputLink) inputLink.style.display = isAdminUser ? '' : 'none';
+    await refreshClientList();
+  } else {
+    document.getElementById('authScreen').style.display = 'flex';
+    document.getElementById('mainApp').style.display = 'none';
+  }
+});
+
+if(FIREBASE_CONFIG.apiKey.includes('여기에')){
+  document.getElementById('authScreen').innerHTML = `
+    <div class="empty-state">
+      <div style="font-size:28px;">⚠️</div>
+      <div style="color:#ff5d7a;font-weight:600;">Firebase 설정이 아직 입력되지 않았어요.</div>
+      <div>파일 상단의 FIREBASE_CONFIG 값을 본인의 Firebase 프로젝트 값으로 채워주세요.</div>
+    </div>`;
+}
+</script>
+</body>
+</html>
