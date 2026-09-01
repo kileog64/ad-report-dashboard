@@ -1581,6 +1581,111 @@ function buildInsightsHTML(insights){
    가능한 경우에만 하나의 종합 제안 문장으로 합침. 노이즈가 큰 극단값을 추천으로 내보내지 않도록
    각 축(시간대/키워드)마다 최소 표본(비용/전환) 기준을 둠 — campaigns.html에서 발견된
    "표본이 너무 작아 CPA가 비현실적으로 낮게/높게 나오는" 문제와 같은 종류의 오류를 막기 위함. */
+/* ---------- 📡 매체(노출 지면)별 성과 ----------
+   네이버 통합검색 / 광고더보기 / 검색파트너(다음·Bing 등)를 나눠서 본다. 수동 CSV엔 없는 축이라
+   자동 수집기가 API 원본에서 따로 집계해 month.mediaStats로 넣어준다(계정에 자동수집을 켠 업체만 표시).
+   판정 원칙: 표본이 작은 매체는 CPA가 극단적으로 나오므로 최소 표본(전환·클릭)을 넘는 곳만 상대 비교하고,
+   나머지는 "표본 부족"으로 판정을 보류한다 — 클릭 몇 번짜리 관측이 결론이 되면 안 되므로. */
+const MEDIA_MIN_CONV = 5;     // 상대 CPA 판정 최소 전환수
+const MEDIA_MIN_CLICKS = 30;  // 상대 CPA 판정 최소 클릭수
+function buildMediaStatsHTML(data, months, isDB){
+  const rows = [];
+  months.forEach(m=>{ (m.mediaStats||[]).forEach(x=>rows.push(x)); });
+  if(!rows.length) return '';
+  const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const labels = (data.mediaLabels)||{};   // 코드→이름 (관리 탭에서 사용자가 붙임)
+  // 같은 매체×기기끼리 합산
+  const agg = {};
+  rows.forEach(x=>{
+    const key = `${x.mediaCode}|${x.device}`;
+    const t = agg[key] || (agg[key] = { mediaCode:x.mediaCode, device:x.device, impressions:0, clicks:0, cost:0, conv:0, revenue:0 });
+    t.impressions += x.impressions||0; t.clicks += x.clicks||0;
+    t.cost += x.cost||0; t.conv += x.conv||0; t.revenue += x.revenue||0;
+  });
+  const list = Object.values(agg).sort((a,b)=>b.cost-a.cost);
+  const totalCost = list.reduce((s,x)=>s+x.cost,0);
+  if(totalCost<=0) return '';
+
+  // 전체 평균 CPA/ROAS — 각 매체를 이것과 비교해 상대 성과를 낸다
+  const totalConv = list.reduce((s,x)=>s+x.conv,0);
+  const totalRev = list.reduce((s,x)=>s+x.revenue,0);
+  const avgCpa = totalConv>0 ? (totalCost*10000/totalConv) : null;
+  const avgRoas = totalCost>0 ? (totalRev/totalCost*100) : null;
+
+  // 네이버 자체 지면 추정: 비용 비중이 큰 상위 2개(보통 통합검색 PC·모바일). 나머지는 파트너/기타로 본다.
+  const mainCodes = new Set(list.slice(0,2).map(x=>x.mediaCode));
+  const partnerCost = list.filter(x=>!mainCodes.has(x.mediaCode)).reduce((s,x)=>s+x.cost,0);
+  const partnerShare = totalCost>0 ? partnerCost/totalCost*100 : 0;
+  const partnerConv = list.filter(x=>!mainCodes.has(x.mediaCode)).reduce((s,x)=>s+x.conv,0);
+
+  const nameOf = x => labels[x.mediaCode] ? `${esc(labels[x.mediaCode])} · ${x.device}` : `매체 #${esc(x.mediaCode)} · ${x.device}`;
+  const verdict = (x)=>{
+    // 전환 0인데 클릭은 충분히 쌓인 매체는 "표본 부족"으로 묻으면 안 됨 — 비율이 아니라 사실 자체가 신호다.
+    if(x.conv === 0 && x.clicks >= MEDIA_MIN_CLICKS) return '<span style="color:var(--down);font-weight:600;">전환 0</span>';
+    if(x.conv < MEDIA_MIN_CONV || x.clicks < MEDIA_MIN_CLICKS) return '<span style="color:var(--muted);">표본 부족</span>';
+    if(isDB){
+      const cpa = x.cost*10000/x.conv;
+      if(avgCpa===null) return '-';
+      const diff = (cpa-avgCpa)/avgCpa*100;
+      const color = diff<=-10?'var(--up)':diff>=10?'var(--down)':'var(--muted)';
+      return `<span style="color:${color};font-weight:600;">${diff>=0?'+':''}${diff.toFixed(0)}%</span>`;
+    }
+    const roas = x.cost>0 ? x.revenue/x.cost*100 : 0;
+    if(avgRoas===null||avgRoas===0) return '-';
+    const diff = roas-avgRoas;
+    const color = diff>=10?'var(--up)':diff<=-10?'var(--down)':'var(--muted)';
+    return `<span style="color:${color};font-weight:600;">${diff>=0?'+':''}${diff.toFixed(0)}%p</span>`;
+  };
+
+  const body = list.map(x=>{
+    const share = totalCost>0 ? x.cost/totalCost*100 : 0;
+    const cpa = x.conv>0 ? Math.round(x.cost*10000/x.conv) : null;
+    const roas = x.cost>0 ? (x.revenue/x.cost*100) : 0;
+    return `<tr>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);">${nameOf(x)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">${share.toFixed(1)}%</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">${fmtMan(x.cost)}원</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">${fmtNum(x.clicks)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">${fmtNum(x.conv)}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">${isDB ? (cpa!==null?cpa.toLocaleString('ko-KR')+'원':'-') : (roas>0?roas.toFixed(0)+'%':'-')}</td>
+      <td style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:right;">${verdict(x)}</td>
+    </tr>`;
+  }).join('');
+
+  // 검색파트너 요약 문장 — 여기가 실제로 돈이 새는 자리라 눈에 띄게 먼저 보여줌
+  let note = '';
+  if(partnerShare >= 3){
+    const partnerCpa = partnerConv>0 ? Math.round(partnerCost*10000/partnerConv) : null;
+    const cmp = (partnerCpa!==null && avgCpa) ? ` (파트너 CPA ${partnerCpa.toLocaleString('ko-KR')}원 vs 전체 평균 ${Math.round(avgCpa).toLocaleString('ko-KR')}원)` : '';
+    note = `<div style="margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--panel-2);border:1px solid ${partnerConv===0?'var(--down)':'var(--border)'};font-size:12.5px;line-height:1.6;">
+      네이버 자체 지면 외(검색파트너 등)에 <b>${fmtMan(partnerCost)}원 · 전체의 ${partnerShare.toFixed(1)}%</b>가 집행됐어요${partnerConv===0?` — 그런데 <b style="color:var(--down);">전환은 0건</b>입니다.`:`${cmp}`}<br>
+      <span style="color:var(--muted);">파트너 지면은 광고그룹 설정에서 끌 수 있어요. 다만 표본이 작으면 우연일 수 있으니 클릭 30회·전환 5건 이상 쌓인 뒤 판단하는 걸 권해요.</span>
+    </div>`;
+  }
+
+  return `<div class="panel" style="margin-bottom:18px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+      <div style="font-size:13px;font-weight:600;color:var(--text);">📡 매체(노출 지면)별 성과</div>
+      <div style="font-size:10.5px;color:var(--muted);">자동 수집 데이터 · 매체 이름은 관리 탭에서 붙일 수 있어요</div>
+    </div>
+    ${note}
+    <div style="overflow-x:auto;margin-top:10px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:640px;">
+        <thead><tr style="color:var(--muted);text-align:right;">
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;">매체 · 기기</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);">비중</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);">비용</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);">클릭</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);">전환</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);">${isDB?'CPA':'ROAS'}</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border);">평균 대비</th>
+        </tr></thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
 function buildCrossAnalysisHTML(data, months, isDB){
   if(!months.length) return '';
   const last = months[months.length-1];
@@ -2469,6 +2574,8 @@ function renderCardInner(data, key, fstate, allMonths, months, campaignList, all
     </header>
     ${buildCollectorAlertsHTML(data, key)}
     <div class="panel" id="insightsPanel" style="margin-bottom:18px;border-left:3px solid var(--accent);"></div>
+
+    ${buildMediaStatsHTML(data, months, isDB)}
 
     ${buildCrossAnalysisHTML(data, months, isDB)}
 
