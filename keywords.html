@@ -347,6 +347,7 @@ function filterRowsByDayRange(rows, range){
     return true;
   });
 }
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 function slugify(name){ return name.trim().replace(/[\s\/\\'"]+/g,'_'); }
 const CAMPAIGN_TYPE_LABELS = { WEB_SITE:'파워링크', SHOPPING:'쇼핑검색', POWER_CONTENTS:'파워컨텐츠', BRAND_SEARCH:'브랜드검색광고', PLACE:'플레이스', PLACE_TP:'플레이스', CATEGORY_EDIT:'세부업종', CAMPAIGN_TYPE_UNKNOWN:'기타' };
 function campaignTypeLabel(t){ return CAMPAIGN_TYPE_LABELS[t] || t; }
@@ -1171,7 +1172,7 @@ function mergeKwExpand(months, fstate, field, sourceMode){
   });
 }
 // waste/expand 테이블에 표시할 모드 뱃지 HTML — MODE_LABEL과 같은 팔레트를 쓰되 더 짧게 축약함.
-const SOURCE_BADGE = { powerlink:'파워링크', shopping:'쇼핑검색', brand:'브랜드검색' };
+const SOURCE_BADGE = { powerlink:'파워링크', plterm:'PL검색어', shopping:'쇼핑검색', brand:'브랜드검색' };
 function sourceBadgeHTML(sourceMode){
   const label = SOURCE_BADGE[sourceMode] || sourceMode || '-';
   return `<span style="font-size:9.5px;padding:1px 6px;border-radius:8px;background:var(--panel-2);border:1px solid var(--border);color:var(--muted);white-space:nowrap;">${label}</span>`;
@@ -1210,16 +1211,18 @@ function renderKeywordsPage(data){
   const allTypes = [...new Set(campaignList.map(c=>c.type))];
   const isDB = data.bizType === 'DB';
   const hasShoppingData = allMonths.some(m=>m.searchTermsByCampaign && Object.keys(m.searchTermsByCampaign).length);
+  // 파워링크 검색어(EXPKEYWORD) — 수집기가 채워주면 나타남. 쇼핑검색 위주 업체는 비어 있을 수 있음.
+  const hasPlTermData = allMonths.some(m=>m.plSearchTermsByCampaign && Object.keys(m.plSearchTermsByCampaign).length);
   const hasBrandData = allMonths.some(m=>m.brandKeywordsByCampaign && Object.keys(m.brandKeywordsByCampaign).length);
 
-  const MODE_FIELD = { powerlink:'keywordsByCampaign', shopping:'searchTermsByCampaign', brand:'brandKeywordsByCampaign' };
-  const MODE_WASTE_FIELD = { powerlink:'wasteKeywordsByCampaign', shopping:'wasteSearchTermsByCampaign', brand:'wasteBrandKeywordsByCampaign' };
-  const MODE_EXPAND_FIELD = { powerlink:'expandKeywordsByCampaign', shopping:'expandSearchTermsByCampaign', brand:'expandBrandKeywordsByCampaign' };
-  const MODE_LABEL = { powerlink:'파워링크 키워드', shopping:'쇼핑검색 검색어', brand:'브랜드검색 키워드' };
+  const MODE_FIELD = { powerlink:'keywordsByCampaign', plterm:'plSearchTermsByCampaign', shopping:'searchTermsByCampaign', brand:'brandKeywordsByCampaign' };
+  const MODE_WASTE_FIELD = { powerlink:'wasteKeywordsByCampaign', plterm:'wastePlSearchTermsByCampaign', shopping:'wasteSearchTermsByCampaign', brand:'wasteBrandKeywordsByCampaign' };
+  const MODE_EXPAND_FIELD = { powerlink:'expandKeywordsByCampaign', plterm:'expandPlSearchTermsByCampaign', shopping:'expandSearchTermsByCampaign', brand:'expandBrandKeywordsByCampaign' };
+  const MODE_LABEL = { powerlink:'파워링크 키워드', plterm:'파워링크 검색어', shopping:'쇼핑검색 검색어', brand:'브랜드검색 키워드' };
   if(!(key in keywordPageState)) keywordPageState[key] = 'powerlink';
   // 데이터가 없는 모드가 선택돼 있으면(업체를 바꿨거나 예전 선택이 남은 경우) 파워링크로 되돌림 —
   // 빈 표에 날짜 버튼까지 비활성인 화면이 뜨면 "왜 아무것도 안 되지"로 보이기 때문.
-  if((keywordPageState[key]==='shopping' && !hasShoppingData) || (keywordPageState[key]==='brand' && !hasBrandData)){
+  if((keywordPageState[key]==='shopping' && !hasShoppingData) || (keywordPageState[key]==='brand' && !hasBrandData) || (keywordPageState[key]==='plterm' && !hasPlTermData)){
     keywordPageState[key] = 'powerlink';
   }
   const mode = keywordPageState[key];
@@ -1346,7 +1349,7 @@ function renderKeywordsPage(data){
   /* 날짜 필터를 켜면 현재 모드만 그 기간으로 잘리고 나머지 두 모드는 월 전체 값이라,
      "최근 7일 파워링크 3만원"과 "한 달치 쇼핑검색 200만원"이 한 표에서 비용순으로 경쟁했음.
      기간이 다른 값을 같은 순위표에 섞지 않도록, 필터 중엔 현재 모드만 보여줌. */
-  const OTHER_MODES = hasDayFilter ? [] : ['powerlink','shopping','brand'].filter(m=>m!==mode);
+  const OTHER_MODES = hasDayFilter ? [] : ['powerlink','plterm','shopping','brand'].filter(m=>m!==mode);
   const dayFilteredWasteExpand = hasDayFilter ? computeWasteExpandByDayRange(months, fstate, dayRangeState[key], isDB, mode) : null;
   let waste = [
     ...(dayFilteredWasteExpand ? dayFilteredWasteExpand.waste : mergeKwWaste(months, fstate, MODE_WASTE_FIELD[mode], mode)),
@@ -1505,6 +1508,7 @@ function renderKeywordsPage(data){
         <span>🔑 TOP ${MODE_LABEL[mode]} (최대 50개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— 열 제목을 클릭하면 정렬돼요</span></span>
         <div style="display:flex;gap:6px;">
           <button class="kw-mode-btn" data-mode="powerlink" style="font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:${mode==='powerlink'?'var(--accent)':'var(--panel)'};color:${mode==='powerlink'?'#fff':'var(--muted)'};cursor:pointer;">파워링크</button>
+          <button class="kw-mode-btn" data-mode="plterm" ${hasPlTermData?'':'disabled title="이 업체는 파워링크 검색어 데이터가 없어요 (쇼핑검색 위주 계정이면 안 나올 수 있어요)"'} style="font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:${mode==='plterm'?'var(--accent)':'var(--panel)'};color:${mode==='plterm'?'#fff':'var(--muted)'};cursor:${hasPlTermData?'pointer':'not-allowed'};${hasPlTermData?'':'opacity:.4;'}">파워링크 검색어${hasPlTermData?'':' (없음)'}</button>
           <button class="kw-mode-btn" data-mode="shopping" ${hasShoppingData?'':'disabled title="이 업체는 쇼핑검색 검색어 데이터가 없어요"'} style="font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:${mode==='shopping'?'var(--accent)':'var(--panel)'};color:${mode==='shopping'?'#fff':'var(--muted)'};cursor:${hasShoppingData?'pointer':'not-allowed'};${hasShoppingData?'':'opacity:.4;'}">쇼핑검색${hasShoppingData?'':' (없음)'}</button>
           <button class="kw-mode-btn" data-mode="brand" ${hasBrandData?'':'disabled title="이 업체는 브랜드검색 키워드 데이터가 없어요"'} style="font-size:11px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:${mode==='brand'?'var(--accent)':'var(--panel)'};color:${mode==='brand'?'#fff':'var(--muted)'};cursor:${hasBrandData?'pointer':'not-allowed'};${hasBrandData?'':'opacity:.4;'}">브랜드검색${hasBrandData?'':' (없음)'}</button>
         </div>
@@ -1528,9 +1532,9 @@ function renderKeywordsPage(data){
             const ctrCvr = `<td>${k.ctr.toFixed(2)}%${cellTrend(t.ctr,'up')}</td><td>${k.cvr.toFixed(2)}%${cellTrend(t.cvr,'up')}</td>`;
             const rankCell = `<td>${k.avgRank!==null?k.avgRank.toFixed(1)+'위':'-'}${cellTrend(t.avgRank,'down')}</td>`;
             return isDB ? `
-            <tr><td class="kw-name">${k.keyword}${newBadge}${typeBadge}</td><td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${k.conv}건${cellTrend(t.conv,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td>${ctrCvr}${rankCell}</tr>
+            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td><td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${k.conv}건${cellTrend(t.conv,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td>${ctrCvr}${rankCell}</tr>
           ` : `
-            <tr><td class="kw-name">${k.keyword}${newBadge}${typeBadge}</td><td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${fmtWon(k.revenue)}원${cellTrend(t.revenue,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td><td>${k.roas.toFixed(0)}%${cellTrend(t.roas,'up')}</td>${ctrCvr}${rankCell}</tr>
+            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td><td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${fmtWon(k.revenue)}원${cellTrend(t.revenue,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td><td>${k.roas.toFixed(0)}%${cellTrend(t.roas,'up')}</td>${ctrCvr}${rankCell}</tr>
           `;}).join('') : `<tr><td colspan="${isDB ? 7 : 8}" style="color:var(--muted);">표시할 데이터가 없어요.</td></tr>`}
         </tbody>
       </table>
@@ -1558,7 +1562,7 @@ function renderKeywordsPage(data){
         <tbody>
           ${expand.length ? expand.slice(0, expandVisibleCount[key]).map(e=>`
             <tr>
-              <td class="kw-name">${e.keyword}${searchTypeBadgeHTML(e.searchType)}</td>
+              <td class="kw-name">${esc(e.keyword)}${searchTypeBadgeHTML(e.searchType)}</td>
               <td style="color:var(--muted);font-size:12px;">${e.campaign} ${sourceBadgeHTML(e.sourceMode)}</td>
               <td>${fmtWon(e.cost)}원</td>
               <td>${isDB ? e.conv+'건' : fmtWon(e.revenue)+'원'}</td>
@@ -1592,7 +1596,7 @@ function renderKeywordsPage(data){
         <tbody>
           ${waste.length ? waste.slice(0, wasteVisibleCount[key]).map(w=>`
             <tr>
-              <td class="kw-name">${w.keyword}${searchTypeBadgeHTML(w.searchType)}</td>
+              <td class="kw-name">${esc(w.keyword)}${searchTypeBadgeHTML(w.searchType)}</td>
               <td style="color:var(--muted);font-size:12px;">${w.campaign} ${sourceBadgeHTML(w.sourceMode)}</td>
               <td style="color:var(--down);font-weight:700;">${fmtWon(w.cost)}원</td>
               <td>${isDB ? w.conv+'건' : fmtWon(w.revenue)+'원'}</td>
