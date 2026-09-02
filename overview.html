@@ -345,16 +345,14 @@ async function loadOverview(){
   // 각 클라이언트 조회는 서로 의존관계가 없어서 동시에 실행해도 안전함(로딩 속도 최적화).
   // 알림 개수도 같은 시점에 동시에 계산해서 업체 카드에 바로 표시함(🔔 배지) — 매번 알림 벨을
   // 눌러야만 어떤 업체에 문제가 있는지 알 수 있던 것을 그리드에서 한눈에 보이게 함.
-  const [results, alerts] = await Promise.all([
-    Promise.all(keys.map(async key=>{
-      let data;
-      try{ data = await getClient(key); }catch(e){ console.error(e); return null; }
-      return data ? { key, data } : null;
-    })),
-    computeAlerts().catch(e=>{ console.error(e); return []; })
-  ]);
+  const results = await Promise.all(keys.map(async key=>{
+    let data;
+    try{ data = await getClient(key); }catch(e){ console.error(e); return null; }
+    return data ? { key, data } : null;
+  }));
   overviewAllClientData = results.filter(Boolean);
-  overviewCachedAlerts = alerts;
+  // 방금 받은 문서를 그대로 넘겨서 알림을 계산 — 같은 문서를 두 번 읽지 않음
+  overviewCachedAlerts = await computeAlerts(overviewAllClientData).catch(e=>{ console.error(e); return []; });
 
   // 시작/종료 월 드롭다운 옵션을 실제 데이터에 존재하는 월 라벨들의 합집합으로 채움(과거순 — 범위 선택이라
   // 시작~종료 순서로 눈에 보이는 게 자연스러움. 기존 단일 선택은 최신순이었지만 그건 '이 달만 보기' 용도였음).
@@ -459,8 +457,15 @@ function renderStatRow(){
   // 업종 유형별 평균 효율 — DB는 평균 CPA(낮을수록 좋음), B2C는 평균 ROAS(높을수록 좋음)
   const dbRows = overviewRows.filter(r=>r.bizType==='DB' && r.cpa>0);
   const b2cRows = overviewRows.filter(r=>r.bizType!=='DB' && r.cost>0);
-  const avgCpa = dbRows.length ? dbRows.reduce((a,r)=>a+r.cpa,0)/dbRows.length : null;
-  const avgRoas = b2cRows.length ? b2cRows.reduce((a,r)=>a+r.roas,0)/b2cRows.length : null;
+  /* 예전엔 업체별 CPA를 그냥 평균냈는데, 그러면 월 100만원 쓰는 업체와 1억 쓰는 업체가 같은 무게를
+     가져서 대표값이 안 됨. 총비용/총전환, 총매출/총비용으로 계산해야 전체를 대표하는 값이 됨
+     (hourly.html은 이미 전환수·비용 가중으로 계산하고 있어 같은 기준으로 맞춤). */
+  const dbCost = dbRows.reduce((a,r)=>a+(r.cost||0),0);
+  const dbConv = dbRows.reduce((a,r)=>a+(r.conv||0),0);
+  const b2cCost = b2cRows.reduce((a,r)=>a+(r.cost||0),0);
+  const b2cRev  = b2cRows.reduce((a,r)=>a+(r.revenue||0),0);
+  const avgCpa = dbConv > 0 ? (dbCost/dbConv) : null;
+  const avgRoas = b2cCost > 0 ? (b2cRev/b2cCost*100) : null;
   const effLines = [
     avgCpa!==null ? `DB 평균 CPA ${fmtNum(avgCpa)}원` : null,
     avgRoas!==null ? `B2C 평균 ROAS ${avgRoas.toFixed(0)}%` : null
@@ -790,16 +795,21 @@ function markAlertsSeen(ids){
     localStorage.setItem(ALERT_SEEN_KEY, JSON.stringify(arr));
   }catch(e){ console.error(e); }
 }
-async function computeAlerts(){
-  const keys = await listClients();
+/* preloaded: [{key, data}] — 이미 받아둔 업체 문서가 있으면 그걸 그대로 씀.
+   loadOverview()가 전 업체를 가져오는데 같은 Promise.all 안에서 computeAlerts()가 또 전부 가져와서
+   업체 7개면 읽기가 14회였음. 넘겨주면 7회로 줄어듦. 알림 벨에서 단독 호출할 땐 인자 없이 부르면
+   예전처럼 직접 조회함. */
+async function computeAlerts(preloaded){
+  const preMap = new Map((preloaded||[]).filter(Boolean).map(r=>[r.key, r.data]));
+  const keys = preMap.size ? [...preMap.keys()] : await listClients();
   const todayDate = new Date();
   const todayStr = todayDate.toISOString().slice(0,10);
   // 클라이언트별 조회·판정을 Promise.all로 동시에 실행 — 순차 for-loop는 클라이언트 수만큼 왕복시간이
   // 그대로 누적되는데, 알림 벨은 페이지 열 때마다/드롭다운 열 때마다 매번 다시 계산돼서 체감 영향이 큼.
   const perClientResults = await Promise.all(keys.map(async key=>{
     const alerts = [];
-    let data;
-    try{ data = await getClient(key); }catch(e){ return alerts; }
+    let data = preMap.get(key);
+    if(!data){ try{ data = await getClient(key); }catch(e){ return alerts; } }
     if(!data || !data.months || !data.months.length) return alerts;
     const months = data.months;
     const last = months[months.length-1];

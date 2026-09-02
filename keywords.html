@@ -313,11 +313,22 @@ function presetDayRange(presetKey, boundsMin, boundsMax){
   if(start > boundsMax || end < boundsMin) return null;
   return { start, end };
 }
+/* 프리셋 버튼 활성화 판정.
+   예전엔 "현재 범위 == 그 프리셋의 범위"만 봤는데, 데이터 상한(boundsMax)에 걸려 잘리면
+   서로 다른 프리셋이 같은 범위로 수렴함. 예를 들어 오늘이 9/1이고 데이터도 9/1까지면
+   '어제'(8/31~8/31)와 '이번달'(9/1~9/1)이 각각 잘려서 둘 다 파랗게 켜졌음.
+   그래서 PRESET_ORDER 순으로 "가장 먼저 일치하는 하나"만 활성으로 봄. */
+const PRESET_ORDER = ['all','yesterday','last7','thisMonth','lastMonth','today'];
+function activePresetKey(range, boundsMin, boundsMax){
+  for(const pk of PRESET_ORDER){
+    if(pk==='all'){ if(!range.start && !range.end) return 'all'; continue; }
+    const p = presetDayRange(pk, boundsMin, boundsMax);
+    if(p && range.start===p.start && range.end===p.end) return pk;
+  }
+  return null;
+}
 function isPresetActive(presetKey, range, boundsMin, boundsMax){
-  if(presetKey==='all') return !range.start && !range.end;
-  const p = presetDayRange(presetKey, boundsMin, boundsMax);
-  if(!p) return false;
-  return range.start===p.start && range.end===p.end;
+  return activePresetKey(range, boundsMin, boundsMax) === presetKey;
 }
 function toDateInputValue(dateStr){
   const parts = String(dateStr).split('.').map(s=>s.trim()).filter(Boolean);
