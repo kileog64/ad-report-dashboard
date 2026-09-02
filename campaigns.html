@@ -141,7 +141,9 @@
   .bottom-row{display:grid;grid-template-columns:1.3fr 1fr;gap:20px;}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th{text-align:left;color:var(--muted);font-weight:600;padding:8px 7px;border-bottom:1px solid var(--border);}
-  td{padding:10px 7px;border-bottom:1px solid #262841;}
+  td{padding:10px 9px;border-bottom:1px solid #262841;}
+  /* 금액·비율 같은 숫자 칸이 좁아 '43,882,900 / 원'처럼 줄바꿈되던 문제 — 숫자는 한 줄로 유지 */
+  table td:not(.kw-name):not(.camp-name-cell){white-space:nowrap;}
   tr:last-child td{border-bottom:none;}
   .kw-name{color:var(--text);font-weight:600;}
   .camp-name-cell{max-width:150px;}
@@ -278,7 +280,8 @@ const monthRangeState = {}; // key -> { start: label, end: label } (start===end 
 const compareMonthState = {};
 const expandedCampaignsState = {}; // key -> Set(campaign명) — 광고그룹 드릴다운을 펼쳐놓은 캠페인들
 const dayCompareCampaigns = {}; // key -> [캠페인명, ...] (최대 3개) — 캠페인별 일별 비교 패널에서 선택된 캠페인들
-const dayCompareMetric = {}; // key -> 'conv'|'cpa'|'roas'|'cost'|'ctr'|'cvr' — 캠페인별 일별 비교 차트 지표
+const dayCompareMetric = {};
+const dayCompareSearch = {};   // key -> 캠페인 비교 목록 검색어(캠페인이 많은 업체에서 목록을 좁히는 용도) // key -> 'conv'|'cpa'|'roas'|'cost'|'ctr'|'cvr' — 캠페인별 일별 비교 차트 지표
 function mergeAdgroupsForCampaign(months, campaignName){
   // adgroupsByCampaign: { 캠페인명: [ {adgroup, cost, revenue, conv, impressions, clicks, avgRank} ] } 원본 데이터를
   // 현재 선택된 기간(months) 전체에 걸쳐 광고그룹별로 합산. 예전 형식으로 저장된 달은 이 필드가 없어서 자동으로 제외됨.
@@ -1743,10 +1746,25 @@ function renderCampaignsPage(data){
     </div>
 
     <div class="panel" style="margin-top:18px;">
-      <div class="panel-title">📊 캠페인별 일별 비교 (최대 3개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— 위 캘린더에서 날짜 범위를 좁혀볼 수 있어요</span></div>
+      <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+        <span>📊 캠페인별 일별 비교 (최대 3개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— 위 캘린더에서 날짜 범위를 좁혀볼 수 있어요</span></span>
+        <span style="font-size:11px;font-weight:400;color:var(--muted);">${compareCampaigns.length}/3 선택됨${campaignList.length>12?` · 전체 ${campaignList.length}개`:''}</span>
+      </div>
       ${!dayBoundsMin ? `<div style="color:var(--muted);font-size:12px;">이 기간엔 일별(날짜) 데이터가 없어요. input.html에서 데이터 보고서를 다시 업로드해보세요.</div>` : `
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-        ${campaignList.map(c=>`<label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text);background:var(--panel-2);padding:4px 9px;border-radius:12px;border:1px solid var(--border);"><input type="checkbox" class="day-cmp-camp" value="${c.campaign}" ${compareCampaigns.includes(c.campaign)?'checked':''} ${(!compareCampaigns.includes(c.campaign) && compareCampaigns.length>=3)?'disabled':''} style="accent-color:var(--accent);width:11px;height:11px;">${c.campaign}</label>`).join('')}
+      ${campaignList.length>12 ? `<input type="text" id="dayCmpSearch" placeholder="캠페인 이름으로 걸러보기…" value="${esc(dayCompareSearch[key]||'')}" style="width:100%;box-sizing:border-box;background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 10px;font-size:11.5px;margin-bottom:8px;">` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;max-height:${campaignList.length>12?'132px':'none'};overflow-y:auto;padding-right:2px;">
+        ${(()=>{
+          const q = String(dayCompareSearch[key]||'').trim().toLowerCase();
+          // 이미 고른 캠페인은 검색에 안 걸려도 남겨둠 — 안 그러면 해제할 방법이 없어짐
+          const shown = campaignList.filter(c=> !q || compareCampaigns.includes(c.campaign) || displayCampaignName(c.campaign).toLowerCase().includes(q));
+          if(!shown.length) return `<span style="font-size:11.5px;color:var(--muted);padding:4px 2px;">'${esc(dayCompareSearch[key]||'')}'와 맞는 캠페인이 없어요.</span>`;
+          return shown.map(c=>{
+            const on = compareCampaigns.includes(c.campaign);
+            const off = !on && compareCampaigns.length>=3;
+            const label = displayCampaignName(c.campaign);
+            return `<label title="${esc(label)}" style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text);background:${on?'var(--accent)':'var(--panel-2)'};padding:4px 9px;border-radius:12px;border:1px solid ${on?'var(--accent)':'var(--border)'};max-width:230px;opacity:${off?'.45':'1'};cursor:${off?'not-allowed':'pointer'};"><input type="checkbox" class="day-cmp-camp" value="${esc(c.campaign)}" ${on?'checked':''} ${off?'disabled':''} style="accent-color:var(--accent);width:11px;height:11px;flex:none;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(label)}</span></label>`;
+          }).join('');
+        })()}
       </div>
       ${compareCampaigns.length ? `
       <div style="margin-bottom:10px;display:flex;gap:6px;">
@@ -1846,6 +1864,17 @@ document.querySelectorAll('.day-preset-pill-cp').forEach(btn=>{
   };
   const cpDayResetBtn = document.getElementById('dayRangeResetBtn');
   if(cpDayResetBtn) cpDayResetBtn.onclick = ()=>{ dayRangeState[key] = { start:null, end:null }; dayRangeCustomOpen[key] = false; renderCampaignsPage(data); };
+  const dayCmpSearchEl = document.getElementById('dayCmpSearch');
+  if(dayCmpSearchEl){
+    dayCmpSearchEl.oninput = ()=>{
+      dayCompareSearch[key] = dayCmpSearchEl.value;
+      const pos = dayCmpSearchEl.selectionStart;
+      renderCampaignsPage(data);
+      // 다시 그리면 입력창이 새로 만들어져 포커스가 날아감 — 커서 위치까지 복원해야 계속 타이핑됨
+      const again = document.getElementById('dayCmpSearch');
+      if(again){ again.focus(); try{ again.setSelectionRange(pos,pos); }catch(e){} }
+    };
+  }
   document.querySelectorAll('.day-cmp-camp').forEach(cb=>{
     cb.onchange = ()=>{
       const set = new Set(dayCompareCampaigns[key]);
