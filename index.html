@@ -691,7 +691,7 @@ async function buildAIContext(){
   if(exp.lastMonthCampaigns && exp.lastMonthCampaigns.length){
     lines.push('\n최근 기간 캠페인별 성과:');
     exp.lastMonthCampaigns.slice(0,15).forEach(c=>{
-      lines.push(`- ${c.campaign} (${c.type?campaignTypeLabel(c.type):'-'}): 비용 ${Math.round((c.cost||0)*10000).toLocaleString('ko-KR')}원, 전환 ${c.conv||0}건, 매출 ${Math.round((c.revenue||0)*10000).toLocaleString('ko-KR')}원`);
+      lines.push(`- ${displayCampaignName(c.campaign)} (${c.type?campaignTypeLabel(c.type):'-'}): 비용 ${Math.round((c.cost||0)*10000).toLocaleString('ko-KR')}원, 전환 ${c.conv||0}건, 매출 ${Math.round((c.revenue||0)*10000).toLocaleString('ko-KR')}원`);
     });
   }
   const topKeywords = extractTopKeywordsFromClientData(data);
@@ -1013,6 +1013,9 @@ function ensureFilterState(key, data){
 }
 
 
+/* HTML 이스케이프 — 예전엔 함수마다 지역 변수로 중복 선언돼 있어서, 함수 밖에서 쓰면
+   'esc is not defined'로 터졌음. 최상위에 하나 두고 공용으로 씀(지역 선언은 그대로 둬도 가려짐). */
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 function mergedCampaignList(data){
   const map = {};
   (data.months||[]).forEach(m=>{
@@ -1020,7 +1023,19 @@ function mergedCampaignList(data){
       if(!map[c.campaign]) map[c.campaign] = { type:c.type, campaign:c.campaign };
     });
   });
-  return Object.values(map);
+  const list = Object.values(map);
+  // 필터 목록에도 ON/OFF 배지를 띄우기 위해 상태를 붙임(상태 정보가 없으면 on=undefined → 배지 미표시)
+  const statusMap = lookupCampaignStatusMap(data.months||[], data);
+  if(statusMap){
+    list.forEach(c=>{
+      const st = statusMap[c.campaign];
+      if(st === undefined || st === null) return;
+      if(typeof st === 'boolean') c.on = st;
+      else if(typeof st === 'string') c.on = !/paused|off|disabled/i.test(st);
+      else if(typeof st === 'object' && 'on' in st) c.on = !!st.on;
+    });
+  }
+  return list;
 }
 
 /* ---------- 렌더링 ---------- */
@@ -1174,7 +1189,7 @@ function generateInsights(data, months, isDB){
         zeroConvCamps.slice(0,3).forEach(c=>{
           const share = totalCostAll>0 ? (c.cost/totalCostAll*100) : 0;
           const recurring = prevZeroSet.has(c.campaign) ? ' — 지난 기간에도 전환 0건이었어요, 구조적인 문제일 수 있어요.' : '';
-          insights.push({type:'warn', text:`ㄴ '${c.campaign}' — ${fmtMan(c.cost)}원 (전체의 ${share.toFixed(1)}%)${recurring} ${diagnoseZeroConv(c)}`});
+          insights.push({type:'warn', text:`ㄴ '${displayCampaignName(c.campaign)}' — ${fmtMan(c.cost)}원 (전체의 ${share.toFixed(1)}%)${recurring} ${diagnoseZeroConv(c)}`});
         });
         if(zeroConvCamps.length>3) insights.push({type:'warn', text:`ㄴ 이 외 ${zeroConvCamps.length-3}개 캠페인도 전환 0건이에요. 위와 같은 방식으로 하나씩 점검해보세요.`});
       }
@@ -1458,7 +1473,7 @@ function renderBudgetSimulatorHTML(months, isDB){
   if(!last || !last.campaigns || last.campaigns.length<2) return '';
   const camps = last.campaigns.filter(c=>c.cost>0);
   if(camps.length<2) return '';
-  const options = camps.map(c=>`<option value="${encodeURIComponent(c.campaign)}">${c.campaign}</option>`).join('');
+  const options = camps.map(c=>`<option value="${encodeURIComponent(c.campaign)}">${esc(displayCampaignName(c.campaign))}</option>`).join('');
   return `
     <div class="panel" id="budgetSimPanel" style="margin-bottom:18px;" data-isdb="${isDB?'1':'0'}">
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;">🔀 예산 재배분 시뮬레이터 <span style="font-size:10.5px;color:var(--muted);font-weight:400;">(최근 기간 '${last.label}' 기준, 보수적 추정치예요)</span></div>
@@ -1814,7 +1829,7 @@ function buildCrossAnalysisHTML(data, months, isDB){
 
     return `
       <div style="padding:10px 12px;background:var(--panel-2);border-radius:8px;margin-bottom:8px;">
-        <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:4px;">${c.campaign} <span style="font-weight:500;color:var(--muted);font-size:11px;">· ${headline}</span></div>
+        <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:4px;">${campaignStatusBadge(c)}${esc(displayCampaignName(c.campaign))} <span style="font-weight:500;color:var(--muted);font-size:11px;">· ${headline}</span></div>
         ${hourSignal ? `<div style="font-size:12px;color:var(--text);padding:3px 0;">${hourSignal.text}</div>` : ''}
         ${kwSignal ? `<div style="font-size:12px;color:var(--text);padding:3px 0;">${kwSignal.text}</div>` : ''}
         ${actionText ? `<div style="font-size:12px;color:var(--accent);font-weight:600;padding:3px 0;">${actionText}</div>` : ''}
@@ -3706,7 +3721,7 @@ function renderFilterPanel(key, data, campaignList, allTypes, renderFn){
       <div class="filter-group-title">캠페인명</div>
       <div class="filter-campaign-list">
       ${campaignList.map(c=>`
-        <label class="filter-item"><input type="checkbox" data-kind="campaign" value="${c.campaign}" ${fstate.campaigns.has(c.campaign)?'checked':''}> ${c.campaign}</label>
+        <label class="filter-item" title="${esc(displayCampaignName(c.campaign))}"><input type="checkbox" data-kind="campaign" value="${esc(c.campaign)}" ${fstate.campaigns.has(c.campaign)?'checked':''}> ${campaignStatusBadge(c)}${esc(displayCampaignName(c.campaign))}</label>
       `).join('')}
       </div>
     </div>
@@ -3826,7 +3841,7 @@ function buildClientReportHTML(d){
     : `<div class="cr-highlight" style="color:var(--muted);">이번 기간도 꾸준히 안정적으로 운영되고 있어요.</div>`;
   const campRows = topCamps.map(c=>{
     const metric = d.isDB ? `${fmtNum(c.conv||0)}건 (CPA ${c.conv>0?Math.round((c.cost||0)*10000/c.conv).toLocaleString('ko-KR')+'원':'-'})` : `${fmtMan(c.revenue||0)}원 (ROAS ${(c.cost||0)>0?((c.revenue||0)/c.cost*100).toFixed(0)+'%':'-'})`;
-    return `<tr><td>${c.campaign}</td><td>${fmtMan(c.cost||0)}원</td><td>${metric}</td></tr>`;
+    return `<tr><td>${esc(displayCampaignName(c.campaign))}</td><td>${fmtMan(c.cost||0)}원</td><td>${metric}</td></tr>`;
   }).join('');
   // 전월(비교 기간) 대비 변화율 요약 — 이미 KPI 배지에서 쓰던 refD/cmpD를 그대로 활용
   const hasCompare = d.refD && d.cmpD && d.refLabel && d.cmpLabel;
