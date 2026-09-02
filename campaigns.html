@@ -1092,6 +1092,45 @@ function buildAppliedSuggestionsReviewHTML(data, allMonths){
 
 const cpSortState = {}; // key -> { field, dir }
 
+const esc = s => String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+/* 캠페인 ON/OFF 상태 — index.html에서 쓰는 것과 같은 규칙.
+   수집기가 상태를 저장하기 시작하면 자동으로 배지가 뜸(없으면 on=undefined → 배지 미표시).
+   저장 위치가 확정 전이라 가능한 경로를 모두 살펴봄. */
+function lookupCampaignStatusMap(months, data){
+  if(data && data.campaignStatus && typeof data.campaignStatus === 'object') return data.campaignStatus;
+  for(let i=months.length-1;i>=0;i--){
+    const m = months[i];
+    if(m && m.campaignStatus && typeof m.campaignStatus === 'object') return m.campaignStatus;
+  }
+  for(let i=months.length-1;i>=0;i--){
+    const m = months[i];
+    if(m && m.campaigns && m.campaigns.some(c=>c && ('on' in c))){
+      const map = {};
+      m.campaigns.forEach(c=>{ if(c && ('on' in c)) map[c.campaign] = !!c.on; });
+      return map;
+    }
+  }
+  return null;
+}
+function applyCampaignStatus(rows, months, data){
+  const statusMap = lookupCampaignStatusMap(months, data);
+  if(!statusMap) return rows;
+  rows.forEach(c=>{
+    const st = statusMap[c.campaign];
+    if(st === undefined || st === null) return;
+    // { on:true/false } 형태와 true/false 원시값, 'ENABLED'/'PAUSED' 문자열 모두 허용
+    if(typeof st === 'boolean') c.on = st;
+    else if(typeof st === 'string') c.on = !/paused|off|disabled/i.test(st);
+    else if(typeof st === 'object' && 'on' in st) c.on = !!st.on;
+  });
+  return rows;
+}
+function campaignStatusBadge(c){
+  if(c.on === undefined) return '';
+  return c.on
+    ? `<span style="flex:none;font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 5px;margin-right:5px;color:#0d0e15;background:var(--up);">ON</span>`
+    : `<span style="flex:none;font-size:9.5px;font-weight:700;border-radius:4px;padding:1px 5px;margin-right:5px;color:var(--muted);background:var(--border);">OFF</span>`;
+}
 function mergeCampaignRows(months, fstate){
   const map = {};
   months.forEach(m=>{
@@ -1205,6 +1244,7 @@ function renderCampaignsPage(data){
   const dayCompareLabels = compareCampaigns.length ? [...new Set(compareCampaigns.flatMap(c=>(compareData[c]||[]).map(r=>r.date)))].sort((a,b)=>dateKey(a).localeCompare(dateKey(b))) : [];
 
   let rows = hasDayFilter ? mergeCampaignRowsByDayRange(months, fstate, dayRangeState[key]) : mergeCampaignRows(months, fstate);
+  applyCampaignStatus(rows, months, data);
   rows = rows.map(r=>({ ...r, cpa: r.conv>0 ? Math.round(r.cost*10000/r.conv) : null, roas: r.cost>0 ? (r.revenue/r.cost*100) : 0,
     ctr: r.impressions>0 ? (r.clicks/r.impressions*100) : 0, cvr: r.clicks>0 ? (r.conv/r.clicks*100) : 0,
     cpc: r.clicks>0 ? (r.cost*10000/r.clicks) : null }));
@@ -1463,9 +1503,13 @@ function renderCampaignsPage(data){
     const metricOk = isDB ? data.goal.metric==='cpa' : data.goal.metric==='roas';
     if(target>0 && metricOk){
       // 표본 부족한 캠페인은 갭 계산에서 제외 — 위 인사이트 계산과 같은 최소 표본 기준(INSIGHT_THRESHOLDS)을 재사용
+      /* 이미 꺼둔 캠페인(on===false)은 목표 미달 경고에서 제외 — 지난달에 끈 캠페인을 매달 다시
+         "목표 미달"로 올려주면 조치할 것도 없는 항목이 리스트를 차지함. 상태를 모르면(undefined)
+         기존과 동일하게 포함. */
+      const live = rows.filter(r=>r.on !== false);
       const eligible = isDB
-        ? rows.filter(r=>r.conv>=INSIGHT_THRESHOLDS.MIN_SAMPLE_CONV && r.cpa!==null)
-        : rows.filter(r=>r.cost>=INSIGHT_THRESHOLDS.MIN_SAMPLE_COST_MAN);
+        ? live.filter(r=>r.conv>=INSIGHT_THRESHOLDS.MIN_SAMPLE_CONV && r.cpa!==null)
+        : live.filter(r=>r.cost>=INSIGHT_THRESHOLDS.MIN_SAMPLE_COST_MAN);
       const withGap = eligible.map(r=>{
         const curr = isDB ? r.cpa : r.roas;
         const gapPct = isDB ? ((curr-target)/target*100) : ((target-curr)/target*100); // 양수면 목표 미달
@@ -1600,7 +1644,7 @@ function renderCampaignsPage(data){
         ? `<div style="color:var(--up);font-size:12.5px;">비교 가능한 캠페인 ${goalGapInfo.totalEligible}개 모두 목표를 달성하고 있어요.</div>`
         : `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">목표 미달 캠페인 ${goalGapInfo.totalMissing}개 (비교 가능 ${goalGapInfo.totalEligible}개 중) — 갭이 큰 순</div>
            ${goalGapInfo.missing.map(r=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12.5px;">
-             <span class="camp-name-cell" style="color:var(--text);">${r.campaign}</span>
+             <span class="camp-name-cell" style="color:var(--text);">${campaignStatusBadge(r)}${esc(displayCampaignName(r.campaign))}</span>
              <span style="color:var(--down);font-weight:700;">${isDB ? r.curr.toLocaleString('ko-KR')+'원' : r.curr.toFixed(0)+'%'} <span style="color:var(--muted);font-weight:400;">(목표 대비 ${r.gapPct.toFixed(0)}% ${isDB?'초과':'부족'})</span></span>
            </div>`).join('')}`}
     </div>
@@ -1678,7 +1722,7 @@ function renderCampaignsPage(data){
               </td></tr>`;
             }
             return `<tr>
-              <td class="kw-name camp-name-cell">${expandBtn}${pinBtn}<span class="camp-name-scroll" title="${r.campaign}">${r.campaign}</span>${newBadge}</td>
+              <td class="kw-name camp-name-cell">${expandBtn}${pinBtn}${campaignStatusBadge(r)}<span class="camp-name-scroll" title="${esc(displayCampaignName(r.campaign))}">${esc(displayCampaignName(r.campaign))}</span>${newBadge}</td>
               <td style="color:var(--muted);font-size:12px;white-space:nowrap;">${campaignTypeLabel(r.type)}</td>
               <td>${fmtWon(r.cost)}원${cellTrend(t.cost,'down')}</td>
               <td>${isDB ? r.conv+'건'+cellTrend(t.conv,'up') : fmtWon(r.revenue)+'원'+cellTrend(t.revenue,'up')}</td>
