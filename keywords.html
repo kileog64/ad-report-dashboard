@@ -1565,8 +1565,10 @@ function renderKeywordsPage(data){
             const t = k.trends || {};
             const ctrCvr = `<td>${k.ctr.toFixed(2)}%${cellTrend(t.ctr,'up')}</td><td>${k.cvr.toFixed(2)}%${cellTrend(t.cvr,'up')}</td>`;
             const rankCell = `<td>${k.avgRank!==null?k.avgRank.toFixed(1)+'위':'-'}${cellTrend(t.avgRank,'down')}</td>`;
-            // 같은 키워드가 여러 캠페인에 있으면 합산된 수치이므로 "외 N개"로 알려준다.
-            const campCell = `<td style="color:var(--muted);font-size:12px;">${k.campaign ? esc(k.campaign) : '-'}${k.campaignCount>1?`<span title="${esc((k.campaigns||[]).join(', '))}" style="margin-left:4px;font-size:10px;opacity:.8;">외 ${k.campaignCount-1}개</span>`:''}</td>`;
+            // 같은 키워드가 여러 캠페인에 있으면 합산된 수치이므로 "외 N개"로 알려주고,
+            // 클릭하면 나머지 캠페인 이름을 그 자리에서 펼쳐 보여준다.
+            const restCamps = (k.campaigns||[]).slice(1);
+            const campCell = `<td style="color:var(--muted);font-size:12px;">${k.campaign ? esc(k.campaign) : '-'}${restCamps.length?`<button type="button" class="kw-camp-toggle" style="margin-left:4px;font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted);cursor:pointer;">외 ${restCamps.length}개 ▾</button><div class="kw-camp-rest" hidden style="margin-top:4px;padding-left:2px;font-size:11px;line-height:1.6;">${restCamps.map(c=>esc(c)).join('<br>')}</div>`:''}</td>`;
             if(noConv){
               // 전환 데이터가 없는 검색어 모드 — 비용을 얼마나 쓰는지와 노출 위치만 본다.
               return `
@@ -1736,6 +1738,17 @@ function renderKeywordsPage(data){
       else if(btn.dataset.target==='expand') expandVisibleCount[key] += 10;
       else wasteVisibleCount[key] += 10;
       renderKeywordsPage(data);
+    };
+  });
+  // '외 N개' 클릭 → 나머지 캠페인 이름을 그 칸에서 바로 펼침/접음.
+  // 다시 그리면 스크롤 위치가 튀므로 화면만 토글한다.
+  document.querySelectorAll('.kw-camp-toggle').forEach(btn=>{
+    btn.onclick = ()=>{
+      const box = btn.parentElement && btn.parentElement.querySelector('.kw-camp-rest');
+      if(!box) return;
+      const opened = !box.hidden;
+      box.hidden = opened;
+      btn.textContent = btn.textContent.replace(opened ? '▴' : '▾', opened ? '▾' : '▴');
     };
   });
   document.querySelectorAll('.ai-summary-btn').forEach(btn=>{
