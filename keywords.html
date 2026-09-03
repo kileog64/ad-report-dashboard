@@ -993,6 +993,48 @@ const topVisibleCount = {}; // key -> number of rows currently shown
 const expandVisibleCount = {};
 const wasteVisibleCount = {};
 
+// 확장검색(EXPKEYWORD) 전환 복구 —
+// 네이버 EXPKEYWORD 보고서는 12컬럼(0~11)이라 전환/매출 컬럼이 아예 없다.
+// 그래서 확장검색으로 발생한 전환은 검색어별로는 영영 알 수 없지만,
+// 광고그룹 단위 합계는 뺄셈으로 되살릴 수 있다:
+//     확장검색 전환 = 광고그룹 총전환 - 그 그룹 등록키워드 전환 합계
+// 네이버 화면이 "확장검색 결과" 한 줄로 보여주는 것과 같은 계산이다.
+// adgroupsByCampaign: { 캠페인: [{adgroup, cost, revenue, conv, impressions, clicks}] }
+function calcExpandSearchTotals(months, fstate){
+  let grpConv=0, grpRev=0, grpCost=0, grpClicks=0, grpImp=0;
+  let kwConv=0, kwRev=0, kwCost=0, kwClicks=0, kwImp=0;
+  months.forEach(m=>{
+    const abc = m.adgroupsByCampaign || {};
+    Object.keys(abc).forEach(camp=>{
+      if(!fstate.campaigns.has(camp)) return;
+      (abc[camp]||[]).forEach(g=>{
+        grpConv += (+g.conv||0); grpRev += (+g.revenue||0); grpCost += (+g.cost||0);
+        grpClicks += (+g.clicks||0); grpImp += (+g.impressions||0);
+      });
+    });
+    const kbc = m.keywordsByCampaign || {};
+    Object.keys(kbc).forEach(camp=>{
+      if(!fstate.campaigns.has(camp)) return;
+      (kbc[camp]||[]).forEach(k=>{
+        kwConv += (+k.conv||0); kwRev += (+k.revenue||0); kwCost += (+k.cost||0);
+        kwClicks += (+k.clicks||0); kwImp += (+k.impressions||0);
+      });
+    });
+  });
+  const conv = grpConv - kwConv, rev = grpRev - kwRev, cost = grpCost - kwCost;
+  const clicks = grpClicks - kwClicks, imp = grpImp - kwImp;
+  // 음수(데이터 정합성이 안 맞는 달)나 전부 0이면 표시하지 않음
+  if(conv<=0 && cost<=0) return null;
+  return {
+    conv: Math.max(0,conv), revenue: Math.max(0,rev), cost: Math.max(0,cost),
+    clicks: Math.max(0,clicks), impressions: Math.max(0,imp),
+    cpa: conv>0 ? Math.round(cost*10000/conv) : null,
+    ctr: imp>0 ? (clicks/imp*100) : null,
+    avgCpc: clicks>0 ? Math.round(cost*10000/clicks) : null,
+    groupConv: grpConv, kwConv: kwConv
+  };
+}
+
 function mergeKwRows(months, fstate, field){
   const map = {};
   months.forEach(m=>{
@@ -1390,6 +1432,33 @@ function renderKeywordsPage(data){
   if(esort.field==='default'){ expand.sort((a,b)=> isDB ? a.cpa-b.cpa : b.roas-a.roas); }
   expand = expand.slice(0,50);
 
+  // 확장검색 합계 — 파워링크/검색어 모드에서만 의미가 있음(등록키워드 대비 성과 비교용).
+  // 날짜 필터가 걸린 경우엔 adgroupsByCampaign이 월 단위라 계산이 어긋나므로 표시하지 않는다.
+  const expandTotals = (!hasDayFilter && (mode==='powerlink' || mode==='plterm'))
+    ? calcExpandSearchTotals(months, fstate) : null;
+  let expandBannerHtml = '';
+  if(expandTotals){
+    const et = expandTotals;
+    const wonTxt = v => v!==null && v!==undefined ? Number(v).toLocaleString('ko-KR') : '-';
+    const cpaTxt = wonTxt(et.cpa);
+    const convTxt = et.conv.toLocaleString();
+    expandBannerHtml = `
+      <div style="margin:0 0 10px 0;padding:10px 12px;border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;background:var(--panel);">
+        <div style="font-size:12px;font-weight:600;color:var(--text);margin-bottom:6px;">확장검색 합계 (등록하지 않은 검색어에서 발생한 실적)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);">
+          <span>비용 <b style="color:var(--text);">${fmtWon(et.cost)}</b></span>
+          <span>전환 <b style="color:var(--text);">${convTxt}건</b></span>
+          <span>CPA <b style="color:var(--text);">${cpaTxt}</b></span>
+          <span>클릭 <b style="color:var(--text);">${et.clicks.toLocaleString()}</b></span>
+          <span>평균CPC <b style="color:var(--text);">${wonTxt(et.avgCpc)}</b></span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;">
+          네이버가 자동 매칭한 검색어들의 합계예요 (광고그룹 전체 ${et.groupConv.toLocaleString()}건 − 등록 키워드 ${et.kwConv.toLocaleString()}건).
+          아래 표의 등록 키워드와 효율을 비교해보세요. 검색어 하나하나의 전환은 네이버가 제공하지 않아 합계로만 볼 수 있어요.
+        </div>
+      </div>`;
+  }
+
   // 💡 키워드 성과 인사이트 (현재 모드·기간·필터 기준)
   // 원인 추정: 전환 없이 비용만 쓴 키워드 — 클릭은 있는데 전환이 없으면 타겟팅/랜딩페이지 불일치,
   // 노출 자체가 적으면 아직 판단하기 이르다는 식으로 campaigns.html의 원인 진단과 같은 관점을 키워드 단위로 적용.
@@ -1537,7 +1606,7 @@ function renderKeywordsPage(data){
 
     <div class="panel">
       <div class="panel-title" style="display:flex;align-items:center;justify-content:space-between;">
-        <span>🔑 TOP ${MODE_LABEL[mode]} (최대 50개) <span style="font-size:12px;color:var(--muted);font-weight:400;">— 열 제목을 클릭하면 정렬돼요</span></span>
+${expandBannerHtml}        <span>🔑 TOP ${MODE_LABEL[mode]} (최대 50개) <span style="font-size:12px;color:var(--muted);font-weight:400;">— 열 제목을 클릭하면 정렬돼요</span></span>
         <div style="display:flex;gap:6px;">
           <button class="kw-mode-btn" data-mode="powerlink" style="font-size:12px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:${mode==='powerlink'?'var(--accent)':'var(--panel)'};color:${mode==='powerlink'?'#fff':'var(--muted)'};cursor:pointer;">파워링크</button>
           <button class="kw-mode-btn" data-mode="plterm" ${hasPlTermData?'':'disabled title="이 업체는 파워링크 검색어 데이터가 없어요 (쇼핑검색 위주 계정이면 안 나올 수 있어요)"'} style="font-size:12px;padding:4px 10px;border-radius:14px;border:1px solid var(--border);background:${mode==='plterm'?'var(--accent)':'var(--panel)'};color:${mode==='plterm'?'#fff':'var(--muted)'};cursor:${hasPlTermData?'pointer':'not-allowed'};${hasPlTermData?'':'opacity:.4;'}">파워링크 검색어${hasPlTermData?'':' (없음)'}</button>
