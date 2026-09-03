@@ -1001,7 +1001,9 @@ function mergeKwRows(months, fstate, field){
     Object.keys(byCamp).forEach(camp=>{
       if(!fstate.campaigns.has(camp)) return;
       byCamp[camp].forEach(item=>{
-        if(!map[item.keyword]) map[item.keyword] = { keyword:item.keyword, cost:0, revenue:0, conv:0, impressions:0, clicks:0, rankSum:0, rankImp:0, searchTypes:new Set() };
+        if(!map[item.keyword]) map[item.keyword] = { keyword:item.keyword, cost:0, revenue:0, conv:0, impressions:0, clicks:0, rankSum:0, rankImp:0, searchTypes:new Set(), camps:new Set() };
+        // 같은 키워드가 여러 캠페인에 걸쳐 있으면 합산되므로, 어느 캠페인에서 나왔는지 모아둔다.
+        map[item.keyword].camps.add(camp);
         map[item.keyword].cost += item.cost;
         map[item.keyword].revenue += item.revenue;
         map[item.keyword].conv += item.conv;
@@ -1017,10 +1019,12 @@ function mergeKwRows(months, fstate, field){
     });
   });
   return Object.values(map).map(v=>{
-    const { searchTypes, rankSum, rankImp, ...rest } = v;
+    const { searchTypes, rankSum, rankImp, camps, ...rest } = v;
     let searchType;
     if(searchTypes.size) searchType = (searchTypes.size>1 || searchTypes.has('mixed')) ? 'mixed' : [...searchTypes][0];
-    return { ...rest, avgRank: rankImp>0 ? (rankSum/rankImp) : null, ...(searchType ? {searchType} : {}) };
+    const campList = [...camps];
+    return { ...rest, campaigns: campList, campaign: campList.length===1 ? campList[0] : (campList.length ? campList[0] : null), campaignCount: campList.length,
+      avgRank: rankImp>0 ? (rankSum/rankImp) : null, ...(searchType ? {searchType} : {}) };
   });
 }
 // 상단 TOP 키워드 표에 날짜 선택(dayRange)이 걸려 있을 때 쓰는 버전 — keywordsByCampaign(월별 집계)엔 날짜가
@@ -1051,12 +1055,17 @@ function mergeKwRowsByDayRange(months, fstate, dayRange, mode){
     rows = filterRowsByDayRange(rows, dayRange);
     rows.forEach(r=>{
       if(!fstate.campaigns.has(r.campaign)) return;
-      if(!map[r.keyword]) map[r.keyword] = { keyword:r.keyword, searchType: r.searchType || searchTypeByKeyword[r.keyword] || null, cost:0, revenue:0, conv:0, impressions:0, clicks:0 };
+      if(!map[r.keyword]) map[r.keyword] = { keyword:r.keyword, searchType: r.searchType || searchTypeByKeyword[r.keyword] || null, cost:0, revenue:0, conv:0, impressions:0, clicks:0, camps:new Set() };
+      map[r.keyword].camps.add(r.campaign);
       map[r.keyword].cost += r.cost||0; map[r.keyword].revenue += r.revenue||0; map[r.keyword].conv += r.conv||0;
       map[r.keyword].impressions += r.impressions||0; map[r.keyword].clicks += r.clicks||0;
     });
   });
-  return Object.values(map).map(v=>({ ...v, avgRank: null }));
+  return Object.values(map).map(v=>{
+    const { camps, ...rest } = v;
+    const campList = [...camps];
+    return { ...rest, campaigns: campList, campaign: campList.length ? campList[0] : null, campaignCount: campList.length, avgRank: null };
+  });
 }
 // TOP 표뿐 아니라 제외추천/확대추천 표에도 날짜 필터를 적용하기 위한 버전 — dailyByKeyword(날짜×키워드,
 // 캠페인당 top+waste+expand 합쳐 최대 75개까지만 존재)를 현재 모드(sourceMode)와 날짜로 먼저 자른 뒤,
@@ -1226,6 +1235,10 @@ function renderKeywordsPage(data){
     keywordPageState[key] = 'powerlink';
   }
   const mode = keywordPageState[key];
+  // 파워링크 '검색어'(EXPKEYWORD) 보고서에는 전환/매출 컬럼 자체가 없음(12컬럼: 0~11).
+  // 그래서 이 모드에서는 전환·매출·ROAS·CPA·전환율을 그리지 않고,
+  // 비용을 얼마나 쓰고 있는지(= 제외어 후보 발굴) 중심으로 컬럼을 바꿔 끼운다.
+  const noConv = (mode === 'plterm');
 
   if(!(key in kwSortState)) kwSortState[key] = { field:'default', dir:'desc' };
   if(!(key in wasteSortState)) wasteSortState[key] = { field:'cost', dir:'desc' };
@@ -1273,7 +1286,8 @@ function renderKeywordsPage(data){
       return (av-bv)*mult;
     });
   }
-  rows = applySort(rows, sort, isDB?'conv':'revenue').slice(0,50);
+  // 검색어 모드는 전환/매출이 전부 0이라 그걸로 정렬하면 순서가 무의미해짐 → 비용 큰 순.
+  rows = applySort(rows, sort, noConv ? 'cost' : (isDB?'conv':'revenue')).slice(0,50);
 
   // 전기간 대비 추이 & 신규 키워드 판별용: 기준 기간의 직전 기간 데이터 확보
   // refMonth = 현재 보고 있는 구간의 마지막 달(단일 월/전체 누적/임의 구간 모두 이 정의 하나로 처리)
@@ -1294,7 +1308,9 @@ function renderKeywordsPage(data){
      그 구간에 데이터가 없으면 ▲▼ 자체를 표시하지 않음. */
   const enrichKw = r => ({ ...r,
     cpa: r.conv>0 ? Math.round(r.cost*10000/r.conv) : null, roas: r.cost>0 ? (r.revenue/r.cost*100) : 0,
-    ctr: r.impressions>0 ? (r.clicks/r.impressions*100) : 0, cvr: r.clicks>0 ? (r.conv/r.clicks*100) : 0 });
+    ctr: r.impressions>0 ? (r.clicks/r.impressions*100) : 0, cvr: r.clicks>0 ? (r.conv/r.clicks*100) : 0,
+    // 검색어 모드 TOP 표에서 전환 컬럼 대신 쓰는 값 (waste/expand와 같은 계산식)
+    avgCpc: r.clicks>0 ? Math.round(r.cost*10000/r.clicks) : null });
   let prevMap = {};
   let prevPeriodLabel = null;
   let dayTrendOff = false;
@@ -1395,6 +1411,22 @@ function renderKeywordsPage(data){
   }
   function generateKeywordInsights(){
     const insights = [];
+    // 검색어 모드: 전환/매출 데이터가 없으므로 "성과가 좋다/나쁘다"를 말할 수 없다.
+    // 대신 돈이 어디로 새는지(비용 집중·클릭률)만 근거 있게 짚어준다.
+    if(noConv){
+      if(rows.length){
+        const top = rows[0];
+        const totalCost = rows.reduce((a,b)=>a+b.cost,0);
+        const share = totalCost>0 ? (top.cost/totalCost*100) : 0;
+        insights.push({type:'neutral', text:`'${top.keyword}' 검색어에 비용이 가장 많이 나갔어요 (${fmtMan(top.cost)}원, 상위 50개 중 ${share.toFixed(0)}%). 우리 상품과 맞는 검색어인지 확인해보세요.`});
+        const lowCtr = rows.filter(r=>r.cost>0 && r.clicks>0 && r.ctr < 1).sort((a,b)=>b.cost-a.cost).slice(0,1)[0];
+        if(lowCtr) insights.push({type:'warn', text:`'${lowCtr.keyword}'는 ${fmtMan(lowCtr.cost)}원을 쓰면서 클릭률이 ${lowCtr.ctr.toFixed(2)}%로 낮아요 — 검색 의도가 우리 상품과 어긋났을 수 있으니 제외어 후보로 검토해보세요.`});
+        const noClick = rows.filter(r=>r.cost>0 && (r.clicks||0)===0);
+        if(noClick.length) insights.push({type:'warn', text:`클릭이 한 번도 없는데 비용이 나간 검색어가 ${noClick.length}개 있어요 (총 ${fmtMan(noClick.reduce((a,b)=>a+b.cost,0))}원).`});
+      }
+      insights.push({type:'neutral', text:'ℹ️ 네이버 검색어 보고서에는 전환·매출 항목이 없어서 이 화면에서는 ROAS·CPA를 계산할 수 없어요. 성과 판단은 파워링크 키워드 화면에서 해주세요.'});
+      return insights;
+    }
     if(rows.length){
       const top = rows[0];
       if(!isDB && top.revenue>0) insights.push({type:'good', text:`'${top.keyword}' ${MODE_LABEL[mode]}가 매출 ${fmtMan(top.revenue)}원으로 가장 성과가 좋아요 (비용 ${fmtMan(top.cost)}원 기준).`});
@@ -1515,13 +1547,15 @@ function renderKeywordsPage(data){
       </div>
       <table>
         <thead><tr>
-          <th>키워드/검색어</th>
+          <th>키워드/검색어</th><th>캠페인</th>
           ${sortTh('비용','cost',sort,'top')}
-          ${isDB ? sortTh('전환수','conv',sort,'top') : sortTh('전환매출','revenue',sort,'top')}
-          ${sortTh('CPA','cpa',sort,'top')}
-          ${!isDB ? sortTh('ROAS','roas',sort,'top') : ''}
+          ${noConv ? '' : (isDB ? sortTh('전환수','conv',sort,'top') : sortTh('전환매출','revenue',sort,'top'))}
+          ${noConv ? '' : sortTh('CPA','cpa',sort,'top')}
+          ${(noConv || isDB) ? '' : sortTh('ROAS','roas',sort,'top')}
+          ${noConv ? sortTh('노출수','impressions',sort,'top') : ''}
+          ${noConv ? sortTh('클릭수','clicks',sort,'top') : ''}
           ${sortTh('클릭률','ctr',sort,'top')}
-          ${sortTh('전환율','cvr',sort,'top')}
+          ${noConv ? sortTh('평균CPC','avgCpc',sort,'top') : sortTh('전환율','cvr',sort,'top')}
           ${sortTh('평균노출순위','avgRank',sort,'top')}
         </tr></thead>
         <tbody>
@@ -1531,31 +1565,42 @@ function renderKeywordsPage(data){
             const t = k.trends || {};
             const ctrCvr = `<td>${k.ctr.toFixed(2)}%${cellTrend(t.ctr,'up')}</td><td>${k.cvr.toFixed(2)}%${cellTrend(t.cvr,'up')}</td>`;
             const rankCell = `<td>${k.avgRank!==null?k.avgRank.toFixed(1)+'위':'-'}${cellTrend(t.avgRank,'down')}</td>`;
+            // 같은 키워드가 여러 캠페인에 있으면 합산된 수치이므로 "외 N개"로 알려준다.
+            const campCell = `<td style="color:var(--muted);font-size:12px;">${k.campaign ? esc(k.campaign) : '-'}${k.campaignCount>1?`<span title="${esc((k.campaigns||[]).join(', '))}" style="margin-left:4px;font-size:10px;opacity:.8;">외 ${k.campaignCount-1}개</span>`:''}</td>`;
+            if(noConv){
+              // 전환 데이터가 없는 검색어 모드 — 비용을 얼마나 쓰는지와 노출 위치만 본다.
+              return `
+            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td>${campCell}<td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${(k.impressions||0).toLocaleString('ko-KR')}</td><td>${(k.clicks||0).toLocaleString('ko-KR')}</td><td>${k.ctr.toFixed(2)}%${cellTrend(t.ctr,'up')}</td><td>${k.avgCpc!==null&&k.avgCpc!==undefined?k.avgCpc.toLocaleString('ko-KR')+'원':'-'}</td>${rankCell}</tr>
+          `;}
             return isDB ? `
-            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td><td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${k.conv}건${cellTrend(t.conv,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td>${ctrCvr}${rankCell}</tr>
+            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td>${campCell}<td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${k.conv}건${cellTrend(t.conv,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td>${ctrCvr}${rankCell}</tr>
           ` : `
-            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td><td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${fmtWon(k.revenue)}원${cellTrend(t.revenue,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td><td>${k.roas.toFixed(0)}%${cellTrend(t.roas,'up')}</td>${ctrCvr}${rankCell}</tr>
-          `;}).join('') : `<tr><td colspan="${isDB ? 7 : 8}" style="color:var(--muted);">표시할 데이터가 없어요.</td></tr>`}
+            <tr><td class="kw-name">${esc(k.keyword)}${newBadge}${typeBadge}</td>${campCell}<td>${fmtWon(k.cost)}원${cellTrend(t.cost,'down')}</td><td>${fmtWon(k.revenue)}원${cellTrend(t.revenue,'up')}</td><td>${k.cpa!==null?k.cpa.toLocaleString('ko-KR'):'-'}원${cellTrend(t.cpa,'down')}</td><td>${k.roas.toFixed(0)}%${cellTrend(t.roas,'up')}</td>${ctrCvr}${rankCell}</tr>
+          `;}).join('') : `<tr><td colspan="${noConv ? 8 : (isDB ? 8 : 9)}" style="color:var(--muted);">표시할 데이터가 없어요.</td></tr>`}
         </tbody>
       </table>
       ${rows.length > topVisibleCount[key] ? `<button class="btn btn-ghost kw-more-btn" data-target="top" style="margin-top:10px;width:100%;">더보기 (${rows.length - topVisibleCount[key]}개 더 있음)</button>` : ''}
-      <div style="margin-top:8px;font-size:10.5px;color:var(--muted);">💡 클릭률은 낮은데 전환율은 정상 → 광고(소재·타겟팅) 점검. 클릭률은 정상인데 전환율만 낮음 → 랜딩페이지 점검. 평균노출순위는 네이버 보고서의 실제 값이며, 파워링크 키워드 리포트에 이 컬럼이 포함된 경우에만 표시돼요.</div>
+      <div style="margin-top:8px;font-size:10.5px;color:var(--muted);">${noConv
+        ? '💡 네이버 <b>검색어</b> 보고서에는 전환·매출 항목이 아예 없어요. 그래서 이 화면은 성과를 보는 곳이 아니라, <b>돈은 쓰는데 우리 상품과 상관없는 검색어를 찾아 제외어로 거르는 용도</b>예요. 비용이 큰데 클릭률이 낮은 검색어부터 확인해 보세요. 전환·매출·ROAS가 궁금하면 위의 <b>파워링크 키워드</b> 버튼으로 보시면 돼요.'
+        : '💡 클릭률은 낮은데 전환율은 정상 → 광고(소재·타겟팅) 점검. 클릭률은 정상인데 전환율만 낮음 → 랜딩페이지 점검. 평균노출순위는 네이버 보고서의 실제 값이며, 파워링크 키워드 리포트에 이 컬럼이 포함된 경우에만 표시돼요.'}</div>
       ${hasPrevForTrend
         ? `<div style="margin-top:4px;font-size:10.5px;color:var(--muted);">▲▼는 직전 기간(${prevPeriodLabel}) 대비 각 지표별 변동(5%이상만 표시)이에요. 직전 기간에 없던 키워드는 NEW로 표시돼요.</div>`
         : (dayTrendOff ? `<div style="margin-top:4px;font-size:10.5px;color:var(--muted);">선택한 날짜 구간 바로 앞에 같은 길이의 데이터가 없어서 ▲▼ 추이는 표시하지 않았어요.</div>` : '')}
     </div>
 
     <div class="panel" style="margin-top:18px;border-left:3px solid var(--up);">
-      <div class="panel-title">📈 확대 추천 전체 목록 (최대 50개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— 효율은 좋은데 평균보다 비용을 적게 쓰고 있는 키워드 (입찰가·예산 확대 검토) · 열 제목을 클릭하면 정렬돼요</span></div>
+      <div class="panel-title">📈 확대 추천 전체 목록 (최대 50개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— ${noConv ? '클릭은 잘 나오는데 아직 비용을 적게 쓰고 있는 검색어 (해당 키워드 입찰가·예산 확대 검토)' : '효율은 좋은데 평균보다 비용을 적게 쓰고 있는 키워드 (입찰가·예산 확대 검토)'} · 열 제목을 클릭하면 정렬돼요</span></div>
       <table>
         <thead><tr>
           <th>키워드/검색어</th><th>캠페인</th>
           ${sortTh('비용','cost',esort,'expand')}
-          ${isDB ? sortTh('전환수','conv',esort,'expand') : sortTh('전환매출','revenue',esort,'expand')}
-          ${sortTh('CPA','cpa',esort,'expand')}
-          ${!isDB ? sortTh('ROAS','roas',esort,'expand') : ''}
+          ${noConv ? '' : (isDB ? sortTh('전환수','conv',esort,'expand') : sortTh('전환매출','revenue',esort,'expand'))}
+          ${noConv ? '' : sortTh('CPA','cpa',esort,'expand')}
+          ${(noConv || isDB) ? '' : sortTh('ROAS','roas',esort,'expand')}
+          ${noConv ? sortTh('노출수','impressions',esort,'expand') : ''}
+          ${noConv ? sortTh('클릭수','clicks',esort,'expand') : ''}
           ${sortTh('클릭률','ctr',esort,'expand')}
-          ${sortTh('전환율','cvr',esort,'expand')}
+          ${noConv ? '' : sortTh('전환율','cvr',esort,'expand')}
           ${sortTh('평균CPC','avgCpc',esort,'expand')}
           ${sortTh('평균노출순위','avgRank',esort,'expand')}
         </tr></thead>
@@ -1565,31 +1610,34 @@ function renderKeywordsPage(data){
               <td class="kw-name">${esc(e.keyword)}${searchTypeBadgeHTML(e.searchType)}</td>
               <td style="color:var(--muted);font-size:12px;">${e.campaign} ${sourceBadgeHTML(e.sourceMode)}</td>
               <td>${fmtWon(e.cost)}원</td>
-              <td>${isDB ? e.conv+'건' : fmtWon(e.revenue)+'원'}</td>
-              <td style="color:${isDB?'var(--up)':'inherit'};font-weight:${isDB?700:400};">${e.cpa!==null?e.cpa.toLocaleString('ko-KR')+'원':'-'}</td>
-              ${!isDB ? `<td style="color:var(--up);font-weight:700;">${e.roas.toFixed(0)}%</td>` : ''}
+              ${noConv ? '' : `<td>${isDB ? e.conv+'건' : fmtWon(e.revenue)+'원'}</td>`}
+              ${noConv ? '' : `<td style="color:${isDB?'var(--up)':'inherit'};font-weight:${isDB?700:400};">${e.cpa!==null?e.cpa.toLocaleString('ko-KR')+'원':'-'}</td>`}
+              ${(noConv || isDB) ? '' : `<td style="color:var(--up);font-weight:700;">${e.roas.toFixed(0)}%</td>`}
+              ${noConv ? `<td>${(e.impressions||0).toLocaleString('ko-KR')}</td><td>${(e.clicks||0).toLocaleString('ko-KR')}</td>` : ''}
               <td>${e.ctr.toFixed(2)}%</td>
-              <td>${e.cvr.toFixed(2)}%</td>
+              ${noConv ? '' : `<td>${e.cvr.toFixed(2)}%</td>`}
               <td>${e.avgCpc!==null?e.avgCpc.toLocaleString('ko-KR')+'원':'-'}</td>
               <td>${e.avgRank!==null?e.avgRank.toFixed(1)+'위':'-'}</td>
             </tr>
-          `).join('') : `<tr><td colspan="${isDB ? 9 : 10}" style="color:var(--muted);">확대 추천 후보가 없어요.</td></tr>`}
+          `).join('') : `<tr><td colspan="${noConv ? 8 : (isDB ? 9 : 10)}" style="color:var(--muted);">확대 추천 후보가 없어요.</td></tr>`}
         </tbody>
       </table>
       ${expand.length > expandVisibleCount[key] ? `<button class="btn btn-ghost kw-more-btn" data-target="expand" style="margin-top:10px;width:100%;">더보기 (${expand.length - expandVisibleCount[key]}개 더 있음)</button>` : ''}
     </div>
 
     <div class="panel" style="margin-top:18px;border-left:3px solid var(--down);">
-      <div class="panel-title">🚫 제외 추천 전체 목록 (최대 50개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— 비용만 쓰고 전환 0건, 또는 ROAS가 낮거나(B2C) CPA가 평균의 2배 이상인(DB) 저효율 키워드 · 열 제목을 클릭하면 정렬돼요</span></div>
+      <div class="panel-title">🚫 제외 추천 전체 목록 (최대 50개) <span style="font-size:11px;color:var(--muted);font-weight:400;">— ${noConv ? '<b>제외어 후보</b> — 비용은 쓰는데 클릭률이 낮은 검색어. 우리 상품과 상관없는 말이 섞여 있으면 제외어로 등록하세요' : '비용만 쓰고 전환 0건, 또는 ROAS가 낮거나(B2C) CPA가 평균의 2배 이상인(DB) 저효율 키워드'} · 열 제목을 클릭하면 정렬돼요</span></div>
       <table>
         <thead><tr>
           <th>키워드/검색어</th><th>캠페인</th>
           ${sortTh('비용','cost',wsort,'waste')}
-          ${isDB ? sortTh('전환수','conv',wsort,'waste') : sortTh('전환매출','revenue',wsort,'waste')}
-          ${sortTh('CPA','cpa',wsort,'waste')}
-          ${!isDB ? sortTh('ROAS','roas',wsort,'waste') : ''}
+          ${noConv ? '' : (isDB ? sortTh('전환수','conv',wsort,'waste') : sortTh('전환매출','revenue',wsort,'waste'))}
+          ${noConv ? '' : sortTh('CPA','cpa',wsort,'waste')}
+          ${(noConv || isDB) ? '' : sortTh('ROAS','roas',wsort,'waste')}
+          ${noConv ? sortTh('노출수','impressions',wsort,'waste') : ''}
+          ${noConv ? sortTh('클릭수','clicks',wsort,'waste') : ''}
           ${sortTh('클릭률','ctr',wsort,'waste')}
-          ${sortTh('전환율','cvr',wsort,'waste')}
+          ${noConv ? '' : sortTh('전환율','cvr',wsort,'waste')}
           ${sortTh('평균CPC','avgCpc',wsort,'waste')}
           ${sortTh('평균노출순위','avgRank',wsort,'waste')}
         </tr></thead>
@@ -1599,15 +1647,16 @@ function renderKeywordsPage(data){
               <td class="kw-name">${esc(w.keyword)}${searchTypeBadgeHTML(w.searchType)}</td>
               <td style="color:var(--muted);font-size:12px;">${w.campaign} ${sourceBadgeHTML(w.sourceMode)}</td>
               <td style="color:var(--down);font-weight:700;">${fmtWon(w.cost)}원</td>
-              <td>${isDB ? w.conv+'건' : fmtWon(w.revenue)+'원'}</td>
-              <td>${w.cpa!==null?w.cpa.toLocaleString('ko-KR')+'원':'-'}</td>
-              ${!isDB ? `<td>${w.roas.toFixed(0)}%</td>` : ''}
+              ${noConv ? '' : `<td>${isDB ? w.conv+'건' : fmtWon(w.revenue)+'원'}</td>`}
+              ${noConv ? '' : `<td>${w.cpa!==null?w.cpa.toLocaleString('ko-KR')+'원':'-'}</td>`}
+              ${(noConv || isDB) ? '' : `<td>${w.roas.toFixed(0)}%</td>`}
+              ${noConv ? `<td>${(w.impressions||0).toLocaleString('ko-KR')}</td><td>${(w.clicks||0).toLocaleString('ko-KR')}</td>` : ''}
               <td>${w.ctr.toFixed(2)}%</td>
-              <td>${w.cvr.toFixed(2)}%</td>
+              ${noConv ? '' : `<td>${w.cvr.toFixed(2)}%</td>`}
               <td>${w.avgCpc!==null?w.avgCpc.toLocaleString('ko-KR')+'원':'-'}</td>
               <td>${w.avgRank!==null?w.avgRank.toFixed(1)+'위':'-'}</td>
             </tr>
-          `).join('') : `<tr><td colspan="${isDB ? 9 : 10}" style="color:var(--muted);">제외 추천 후보가 없어요.</td></tr>`}
+          `).join('') : `<tr><td colspan="${noConv ? 8 : (isDB ? 9 : 10)}" style="color:var(--muted);">제외 추천 후보가 없어요.</td></tr>`}
         </tbody>
       </table>
       ${waste.length > wasteVisibleCount[key] ? `<button class="btn btn-ghost kw-more-btn" data-target="waste" style="margin-top:10px;width:100%;">더보기 (${waste.length - wasteVisibleCount[key]}개 더 있음)</button>` : ''}
