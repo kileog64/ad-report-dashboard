@@ -34,63 +34,63 @@
   body{margin:0;background:radial-gradient(circle at 10% 0%,#191a2c 0%,var(--bg) 45%);color:var(--text);font-family:'Pretendard',sans-serif;-webkit-font-smoothing:antialiased;line-height:1.5;}
   .wrap{max-width:1480px;margin:0 auto;padding:28px;}
   .field{margin-bottom:13px;}
-  .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:500;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:500;}
   .field input{width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);font-size:14px;font-family:'Pretendard',sans-serif;}
   .btn{border:none;border-radius:10px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;width:100%;margin-top:7px;}
   .btn-accent{background:linear-gradient(135deg,var(--accent),#a89aff);color:#fff;}
-  .status-msg{font-size:12.5px;margin-top:11px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--muted);display:none;line-height:1.5;}
+  .status-msg{font-size:12px;margin-top:11px;padding:10px 12px;border-radius:8px;background:var(--panel-2);color:var(--muted);display:none;line-height:1.5;}
   .status-msg.show{display:block;}
   .status-msg.err{color:var(--down);}
-  .export-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-size:13px;font-weight:500;cursor:pointer;}
+  .export-btn{background:var(--panel-2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:9px 16px;font-size:14px;font-weight:500;cursor:pointer;}
   .panel{background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:20px;}
-  .panel-title{font-size:15.5px;font-weight:700;margin-bottom:14px;color:var(--text);}
+  .panel-title{font-size:16px;font-weight:700;margin-bottom:14px;color:var(--text);}
   .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:280px;color:var(--muted);font-size:14px;text-align:center;gap:10px;line-height:1.6;}
 
   /* ---- 상단 요약 통계 ---- */
   .stat-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-bottom:22px;}
   .stat-card{background:var(--panel-2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;}
   .stat-card .lbl{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
-  .stat-card .val{font-size:24px;font-weight:800;margin-top:8px;letter-spacing:-.01em;}
+  .stat-card .val{font-size:28px;font-weight:800;margin-top:8px;letter-spacing:-.01em;}
 
   /* ---- 필터바 ---- */
   .filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap;}
-  .biz-tab{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 18px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .biz-tab{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 18px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;}
   .biz-tab.active{border-color:var(--accent);color:var(--accent);background:rgba(139,124,255,.12);}
-  .search-input{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13.5px;color:var(--text);min-width:200px;}
+  .search-input{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:14px;color:var(--text);min-width:200px;}
   .search-input:focus{outline:none;border-color:var(--accent);}
-  .sort-select{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:13px;color:var(--text);}
+  .sort-select{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:9px 14px;font-size:14px;color:var(--text);}
 
   /* ---- 카드 그리드 ---- */
   .client-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;}
   .client-card{background:var(--panel-2);border:1px solid var(--border);border-radius:16px;padding:20px;cursor:pointer;transition:border-color .15s,transform .15s;position:relative;}
   .client-card:hover{border-color:var(--accent);transform:translateY(-2px);}
   .client-card-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
-  .client-card-icon{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:700;flex-shrink:0;}
-  .client-card-name{font-size:15.5px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;}
-  .client-card-biz{font-size:10.5px;color:var(--muted);background:rgba(255,255,255,.08);padding:2px 8px;border-radius:10px;margin-top:3px;display:inline-block;}
-  .client-card-period{font-size:11px;color:var(--muted);margin-top:3px;}
+  .client-card-icon{width:42px;height:42px;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0;}
+  .client-card-name{font-size:16px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px;}
+  .client-card-biz{font-size:12px;color:var(--muted);background:rgba(255,255,255,.08);padding:2px 8px;border-radius:10px;margin-top:3px;display:inline-block;}
+  .client-card-period{font-size:12px;color:var(--muted);margin-top:3px;}
   .client-card-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);}
-  .client-card-metric .m{font-size:11px;color:var(--muted);}
+  .client-card-metric .m{font-size:12px;color:var(--muted);}
   .client-card-metric .v{font-size:16px;font-weight:700;margin-top:3px;}
   .client-card-badge{position:absolute;top:16px;right:44px;font-size:16px;}
-  .client-card-alert-badge{position:absolute;top:14px;left:16px;font-size:10.5px;font-weight:800;color:#fff;background:var(--down);border-radius:10px;padding:3px 8px;display:flex;align-items:center;gap:2px;}
+  .client-card-alert-badge{position:absolute;top:14px;left:16px;font-size:12px;font-weight:800;color:#fff;background:var(--down);border-radius:10px;padding:3px 8px;display:flex;align-items:center;gap:2px;}
   .client-card-trend{font-weight:700;margin-left:4px;}
   .client-card-trend.up{color:var(--up);}
   .client-card-trend.down{color:var(--down);}
-  .overview-section-title{font-size:15px;font-weight:800;color:var(--text);margin:28px 0 14px;padding-top:4px;}
+  .overview-section-title{font-size:16px;font-weight:800;color:var(--text);margin:28px 0 14px;padding-top:4px;}
   .overview-section-title:first-child{margin-top:0;}
-  .client-card-goal{margin-top:12px;padding-top:11px;border-top:1px dashed var(--border);font-size:11.5px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;border-radius:6px;}
+  .client-card-goal{margin-top:12px;padding-top:11px;border-top:1px dashed var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:6px;cursor:pointer;border-radius:6px;}
   .client-card-goal:hover{background:rgba(255,255,255,.04);}
   .client-card-goal.goal-met{color:var(--up);}
   .client-card-goal.goal-miss{color:var(--down);}
   .client-card-goal-empty{color:var(--muted);}
-  .client-card-goal-edit{font-size:10.5px;color:var(--accent);font-weight:700;white-space:nowrap;}
-  .client-card-pin{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px;z-index:2;}
+  .client-card-goal-edit{font-size:12px;color:var(--accent);font-weight:700;white-space:nowrap;}
+  .client-card-pin{position:absolute;top:14px;right:16px;background:none;border:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer;padding:2px;z-index:2;}
   .client-card-pin:hover{color:#f5c542;}
   .client-card-pin.pinned{color:#f5c542;}
   .client-card-spark{margin-top:12px;display:flex;align-items:center;gap:8px;}
-  .client-card-spark-lbl{font-size:10px;color:var(--muted);}
-  .risk-panel-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);font-size:13px;}
+  .client-card-spark-lbl{font-size:11px;color:var(--muted);}
+  .risk-panel-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--border);font-size:14px;}
   .risk-panel-row:last-child{border-bottom:none;}
   .risk-panel-row .name{font-weight:700;min-width:90px;}
   .risk-panel-row .text{color:var(--muted);flex:1;}
@@ -101,19 +101,19 @@
 
 <div id="authScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
   <div style="background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:32px;width:340px;">
-    <h2 style="margin:0 0 4px;font-size:18px;">📊 광고 성과 대시보드</h2>
+    <h2 style="margin:0 0 4px;font-size:20px;">📊 광고 성과 대시보드</h2>
     <div style="font-size:12px;color:var(--muted);margin-bottom:20px;">팀 계정으로 로그인하면 전체 업체 데이터를 함께 볼 수 있어요.</div>
     <div class="field"><label>이메일</label><input id="auth-email" type="email" placeholder="you@company.com"></div>
     <div class="field"><label>비밀번호</label><input id="auth-pw" type="password" placeholder="6자 이상"></div>
     <button class="btn btn-accent" id="loginBtn">로그인</button>
-    <div style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5;">계정이 없으신가요? 관리자에게 계정 생성을 요청해주세요.</div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;">계정이 없으신가요? 관리자에게 계정 생성을 요청해주세요.</div>
     <div class="status-msg" id="authStatus"></div>
   </div>
 </div>
 
 <div class="wrap" id="mainApp" style="display:none;">
   <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;row-gap:10px;">
-    <h1 style="font-size:19px;margin:0;">🗂️ 전체 업체 개요</h1>
+    <h1 style="font-size:20px;margin:0;">🗂️ 전체 업체 개요</h1>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <a href="index.html" style="font-size:12px;color:var(--accent);text-decoration:none;">📊 대시보드</a>
       <a href="todo.html" style="font-size:12px;color:var(--accent);text-decoration:none;">✅ 할 일 목록</a>
@@ -123,7 +123,7 @@
       <a href="hourly.html" style="font-size:12px;color:var(--accent);text-decoration:none;">⏰ 시간대별 전용 보기</a>
         <a href="input.html" style="font-size:12px;color:var(--accent);text-decoration:none;">+ 데이터 입력하기</a>
       <div class="alert-bell" id="alertBell" style="position:relative;">
-        <button id="alertBellBtn" type="button" title="알림" style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:15px;position:relative;color:var(--text);">🔔<span id="alertBellBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--down);color:#fff;font-size:9px;font-weight:800;border-radius:8px;min-width:15px;height:15px;line-height:15px;text-align:center;padding:0 3px;"></span></button>
+        <button id="alertBellBtn" type="button" title="알림" style="background:var(--panel-2);border:1px solid var(--border);border-radius:8px;width:34px;height:34px;cursor:pointer;font-size:16px;position:relative;color:var(--text);">🔔<span id="alertBellBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--down);color:#fff;font-size:11px;font-weight:800;border-radius:8px;min-width:15px;height:15px;line-height:15px;text-align:center;padding:0 3px;"></span></button>
         <div id="alertBellDropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;width:340px;max-height:420px;overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.4);z-index:50;padding:8px;"></div>
       </div>
       <span id="authUserEmail" style="font-size:12px;color:var(--muted);"></span>
@@ -141,7 +141,7 @@
     <select class="sort-select" id="overviewRangeStartSelect" title="시작 월">
       <option value="LATEST">최근 기간(자동)</option>
     </select>
-    <span style="color:var(--muted);font-size:13px;">~</span>
+    <span style="color:var(--muted);font-size:14px;">~</span>
     <select class="sort-select" id="overviewRangeEndSelect" title="종료 월">
       <option value="LATEST">최근 기간(자동)</option>
     </select>
@@ -413,11 +413,11 @@ function renderRiskPanel(alerts){
         <span class="text">${a.text}</span>
       </div>`;
   }).join('');
-  const moreTxt = alerts.length>12 ? `<div style="font-size:11.5px;color:var(--muted);padding:8px 4px 0;">그 외 ${alerts.length-12}건 더 있어요 — 🔔 알림 벨에서 전체 확인 가능</div>` : '';
+  const moreTxt = alerts.length>12 ? `<div style="font-size:12px;color:var(--muted);padding:8px 4px 0;">그 외 ${alerts.length-12}건 더 있어요 — 🔔 알림 벨에서 전체 확인 가능</div>` : '';
   panel.style.display = 'block';
   panel.innerHTML = `
     <div class="panel">
-      <div class="panel-title">⚠️ 지금 확인이 필요해요 <span style="font-weight:400;color:var(--muted);font-size:12.5px;">(관리자 전용 · 전체 ${alerts.length}건)</span></div>
+      <div class="panel-title">⚠️ 지금 확인이 필요해요 <span style="font-weight:400;color:var(--muted);font-size:12px;">(관리자 전용 · 전체 ${alerts.length}건)</span></div>
       <div>${rowsHtml}</div>
       ${moreTxt}
     </div>`;
@@ -575,7 +575,7 @@ function renderOneSection(containerEl, rows, sectionRows, sectionLabel){
     rows.forEach(r=>{ if(!groups[r.industry]) groups[r.industry]=[]; groups[r.industry].push(r); });
     const industryNames = Object.keys(groups).sort((a,b)=>a.localeCompare(b,'ko'));
     bodyHtml = industryNames.map(ind=>`
-      <div style="font-size:12.5px;font-weight:700;color:var(--muted);margin:16px 0 8px;">${ind} <span style="font-weight:400;">(${groups[ind].length}개)</span></div>
+      <div style="font-size:12px;font-weight:700;color:var(--muted);margin:16px 0 8px;">${ind} <span style="font-weight:400;">(${groups[ind].length}개)</span></div>
       <div class="client-grid">${groups[ind].map(r=>overviewCardHTML(r,bestKeys,worstKeys,pinnedSet)).join('')}</div>
     `).join('');
   } else {
@@ -736,13 +736,13 @@ function renderPermOverviewPanel(){
       ? `<span style="color:var(--accent);font-weight:700;">제한: ${r.allowedUsers.length}명</span>`
       : `<span style="color:var(--muted);">전체 공개</span>`;
     const emailsHtml = restricted
-      ? `<div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${r.allowedUsers.map(e=>e.replace(/</g,'&lt;')).join(', ')}</div>`
+      ? `<div style="font-size:12px;color:var(--muted);margin-top:3px;">${r.allowedUsers.map(e=>e.replace(/</g,'&lt;')).join(', ')}</div>`
       : '';
     return `
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:11px 4px;border-bottom:1px solid var(--border);">
-        <div style="min-width:120px;font-size:13.5px;font-weight:600;">${r.name}</div>
+        <div style="min-width:120px;font-size:14px;font-weight:600;">${r.name}</div>
         <div style="flex:1;text-align:right;">
-          <div style="font-size:13px;">${statusHtml}</div>
+          <div style="font-size:14px;">${statusHtml}</div>
           ${emailsHtml}
         </div>
       </div>`;
@@ -751,7 +751,7 @@ function renderPermOverviewPanel(){
   panel.style.display = 'block';
   panel.innerHTML = `
     <div class="panel">
-      <div class="panel-title">🔐 업체별 접근 권한 현황 <span style="font-weight:400;color:var(--muted);font-size:12.5px;">(관리자 전용 · 전체 공개 ${rows.length-restrictedCount}개 · 제한 ${restrictedCount}개)</span></div>
+      <div class="panel-title">🔐 업체별 접근 권한 현황 <span style="font-weight:400;color:var(--muted);font-size:12px;">(관리자 전용 · 전체 공개 ${rows.length-restrictedCount}개 · 제한 ${restrictedCount}개)</span></div>
       <div>${rowsHtml}</div>
     </div>`;
 }
@@ -918,21 +918,21 @@ async function loadAlerts(){
   if(unread.length){ badge.textContent = unread.length>99?'99+':String(unread.length); badge.style.display = 'block'; }
   else badge.style.display = 'none';
   if(!alerts.length){
-    dropdown.innerHTML = `<div style="padding:20px 10px;text-align:center;color:var(--muted);font-size:12.5px;">🔔 이상 징후가 없어요.</div>`;
+    dropdown.innerHTML = `<div style="padding:20px 10px;text-align:center;color:var(--muted);font-size:12px;">🔔 이상 징후가 없어요.</div>`;
     return;
   }
   dropdown.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 6px 10px;border-bottom:1px solid var(--border);margin-bottom:6px;">
-      <span style="font-size:12.5px;font-weight:700;color:var(--text);">이상 징후 알림 (${alerts.length})</span>
-      <button id="alertMarkAllReadBtn" style="background:none;border:none;color:var(--accent);font-size:11px;cursor:pointer;">모두 읽음</button>
+      <span style="font-size:12px;font-weight:700;color:var(--text);">이상 징후 알림 (${alerts.length})</span>
+      <button id="alertMarkAllReadBtn" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;">모두 읽음</button>
     </div>
     ${alerts.map(a=>{
       const isUnread = !seen.has(a.id);
       return `<div class="alert-item" data-key="${a.key}" data-id="${a.id.replace(/"/g,'&quot;')}" style="display:flex;gap:8px;padding:9px 6px;border-radius:8px;cursor:pointer;${isUnread?'background:rgba(139,124,255,.08);':''}">
         <span style="font-size:14px;flex-shrink:0;">${a.icon}</span>
         <div style="min-width:0;">
-          <div style="font-size:11.5px;font-weight:700;color:var(--text);">${a.name}${isUnread?' <span style="color:var(--accent);">●</span>':''}</div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:2px;line-height:1.4;">${a.text}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text);">${a.name}${isUnread?' <span style="color:var(--accent);">●</span>':''}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4;">${a.text}</div>
         </div>
       </div>`;
     }).join('')}
